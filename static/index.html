@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ajun's - Load Testing Tool</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Audio for completion notification -->
+    <audio id="completionSound" preload="auto">
+        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZjToJG2m98OScTgwOUKXh8LRiHAU2jtXzyn0xBSh+zPHajz8KFF+z6OyrWRYLSKDf87tmIgUsgs/z2ow8CSBqvvHim1ELD1Cn4u+xYBsENo/U8sp+MwUph8zx2Y8+ChRhtOjprFoXC0mg4POFYSMELoPQ89uNPQkhasDx4ppRCw9RqeLusF8aAzaP1PLJgDQGKonO8dqOPAoTYrTo6axaGAxKoe" type="audio/wav">
+    </audio>
+
+    <!-- Header -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-bolt text-primary"></i>
+                <strong>Load Testing Tool</strong>
+            </a>
+            <div class="d-flex align-items-center gap-3">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Disconnected</span>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" id="themeToggle" title="Toggle theme">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-success" id="newTestBtn" title="Clear all and start a new test">
+                    <i class="fas fa-plus-circle"></i> New Test
+                </button>
+                <button class="btn btn-sm btn-outline-primary" id="saveConfigBtn">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button class="btn btn-sm btn-outline-primary" id="loadConfigBtn">
+                    <i class="fas fa-folder-open"></i> Load
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row">
+            <!-- Configuration Column -->
+            <div class="col-lg-6">
+                <!-- API Configuration -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-network-wired text-primary"></i> API Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">HTTP Method</label>
+                                <select id="httpMethod" class="form-select">
+                                    <option value="GET">GET</option>
+                                    <option value="POST" selected>POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="PATCH">PATCH</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+                            <div class="col-md-9">
+                                <label class="form-label">API URL <span class="text-danger">*</span></label>
+                                <input type="url" id="apiUrl" class="form-control" placeholder="https://api.example.com/endpoint" required>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" id="followRedirects" class="form-check-input" checked>
+                                    <label class="form-check-label" for="followRedirects">Follow Redirects</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" id="verifySSL" class="form-check-input">
+                                    <label class="form-check-label" for="verifySSL">Verify SSL</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Headers Section -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-list text-primary"></i> Headers</h5>
+                        <button class="btn btn-sm btn-primary" id="addHeaderBtn">
+                            <i class="fas fa-plus"></i> Add Header
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="headersList" class="key-value-container">
+                            <div class="text-muted text-center py-3" id="headersEmpty">
+                                <i class="fas fa-inbox fa-2x mb-2"></i>
+                                <p class="mb-0">No headers added</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Request Body Section -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-code text-primary"></i> Request Body</h5>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary active" data-body-type="json">JSON</button>
+                            <button type="button" class="btn btn-outline-primary" data-body-type="form">Form</button>
+                            <button type="button" class="btn btn-outline-primary" data-body-type="raw">Raw</button>
+                            <button type="button" class="btn btn-outline-primary" data-body-type="none">None</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- JSON/Form Body -->
+                        <div id="keyValueBody">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <button class="btn btn-sm btn-primary" id="addBodyFieldBtn">
+                                    <i class="fas fa-plus"></i> Add Field
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" id="pasteJsonBtn">
+                                    <i class="fas fa-paste"></i> Paste JSON
+                                </button>
+                            </div>
+                            <div id="bodyFieldsList" class="key-value-container">
+                                <div class="text-muted text-center py-3" id="bodyEmpty">
+                                    <i class="fas fa-code fa-2x mb-2"></i>
+                                    <p class="mb-0">No body fields added</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Raw Body -->
+                        <div id="rawBody" style="display: none;">
+                            <textarea id="rawBodyInput" class="form-control font-monospace" rows="8" placeholder="Enter raw request body..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Rules Section -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-shield-check text-primary"></i> Validation Rules</h5>
+                        <button class="btn btn-sm btn-primary" id="addValidationBtn">
+                            <i class="fas fa-plus"></i> Add Rule
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="validationList" class="validation-container">
+                            <div class="text-muted text-center py-3" id="validationEmpty">
+                                <i class="fas fa-shield-halved fa-2x mb-2"></i>
+                                <p class="mb-0">No validation rules configured</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Load Test Settings -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-gauge-high text-primary"></i> Load Test Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Concurrent Requests</label>
+                                <input type="number" id="concurrentCalls" class="form-control" min="1" max="1000" value="1">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Sequential Batches</label>
+                                <input type="number" id="sequentialBatches" class="form-control" min="1" max="100" placeholder="Optional">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Timeout (seconds)</label>
+                                <input type="number" id="timeout" class="form-control" min="1" max="300" value="30">
+                            </div>
+                        </div>
+                        <button class="btn btn-success btn-lg w-100 mt-3" id="runTestBtn">
+                            <i class="fas fa-play"></i> Run Load Test
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Column -->
+            <div class="col-lg-6">
+                <div class="card sticky-top" style="top: 1rem;">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-chart-line text-primary"></i> Test Results</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Progress -->
+                        <div id="progressCard" class="alert alert-info" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span id="progressText" class="fw-bold">Running test...</span>
+                                <span id="progressStats" class="badge bg-primary">0 / 0</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressFill" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Stats -->
+                        <div id="statsGrid" class="row g-3 mb-4" style="display: none;">
+                            <div class="col-12 col-sm-6">
+                                <div class="stat-card text-center p-4 border rounded shadow-sm">
+                                    <div class="text-muted small mb-2">Success Rate</div>
+                                    <div class="fs-3 fw-bold text-success" id="statSuccessRate">0%</div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-sm-6">
+                                <div class="stat-card text-center p-4 border rounded shadow-sm">
+                                    <div class="text-muted small mb-2">Avg Time</div>
+                                    <div class="fs-3 fw-bold text-info" id="statAvgTime">0ms</div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-sm-6">
+                                <div class="stat-card text-center p-4 border rounded shadow-sm">
+                                    <div class="text-muted small mb-2">Requests/Sec</div>
+                                    <div class="fs-3 fw-bold text-primary" id="statRPS">0</div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-sm-6">
+                                <div class="stat-card text-center p-4 border rounded shadow-sm">
+                                    <div class="text-muted small mb-2">Failed</div>
+                                    <div class="fs-3 fw-bold text-danger" id="statFailed">0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div id="resultsTableContainer" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0">Detailed Results</h6>
+                                <button class="btn btn-sm btn-outline-primary" id="exportBtn">
+                                    <i class="fas fa-download"></i> Export
+                                </button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Status</th>
+                                            <th>Method</th>
+                                            <th>Time</th>
+                                            <th>Code</th>
+                                            <th>Validation</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultsTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div id="resultsEmpty" class="text-center py-5">
+                            <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Test Results Yet</h5>
+                            <p class="text-muted">Configure your API and run a load test to see results</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Paste JSON Modal -->
+    <div class="modal fade" id="pasteJsonModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-paste"></i> Paste JSON</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong><i class="fas fa-info-circle"></i> Tips:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>Paste a valid JSON object with key-value pairs</li>
+                            <li><strong>Remove trailing commas</strong> after the last field</li>
+                            <li>Use double quotes for strings</li>
+                            <li>Check for unclosed braces or brackets</li>
+                        </ul>
+                    </div>
+                    <label class="form-label fw-bold">JSON Input:</label>
+                    <textarea id="jsonPasteInput" class="form-control font-monospace" rows="12" placeholder='Example:
+{
+  "user_input": "Your text here",
+  "product": "Product name",
+  "category": "Category name"
+}'></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="validateJsonBtn">
+                        <i class="fas fa-check-circle"></i> Validate
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="applyJsonBtn">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Validation Rule Modal -->
+    <div class="modal fade" id="validationModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Validation Rule</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Validation Type</label>
+                        <select id="validationType" class="form-select">
+                            <option value="exists">String Exists</option>
+                            <option value="not_exists">String Does Not Exist</option>
+                            <option value="status_code">Status Code</option>
+                            <option value="regex_match">Regex Match</option>
+                            <option value="json_path">JSON Path</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expected Value</label>
+                        <input type="text" id="validationValue" class="form-control" placeholder="Enter expected value">
+                    </div>
+                    <div class="mb-3" id="fieldPathGroup" style="display: none;">
+                        <label class="form-label">JSON Path</label>
+                        <input type="text" id="fieldPath" class="form-control" placeholder="e.g., data.user.name">
+                        <div class="form-text">Use dot notation for nested fields</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input type="text" id="validationDescription" class="form-control" placeholder="Optional description">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveValidationBtn">Add Rule</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Config Modal -->
+    <div class="modal fade" id="loadConfigModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Load Configuration</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="configsList" class="list-group">
+                        <!-- Configs will be loaded here -->
+                    </div>
+                    <div id="configsEmpty" class="text-center py-4">
+                        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No saved configurations</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Request Details Modal -->
+    <div class="modal fade" id="detailsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Request Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-3" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#requestTab">Request</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#responseTab">Response</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#validationTab">Validation</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="requestTab">
+                            <pre id="requestDetails" class="bg-light p-3 rounded"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="responseTab">
+                            <pre id="responseDetails" class="bg-light p-3 rounded"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="validationTab">
+                            <div id="validationDetails"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

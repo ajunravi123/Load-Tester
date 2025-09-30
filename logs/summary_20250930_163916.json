@@ -1,0 +1,39 @@
+{
+  "session_id": "05872382-4479-4719-933b-c614f518a196",
+  "timestamp": "20250930_163916",
+  "config": {
+    "base_url": "https://tools.impact-agents.ai/internal/keyword-finder",
+    "http_method": "POST",
+    "headers": {
+      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc"
+    },
+    "body_type": "json",
+    "request_body": {
+      "user_input": "Generate a banner image for upc 15561117128 for a summer event.",
+      "product": "MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT",
+      "keywords_csv_path": "accounts/psp/public_files/psp-keywords-v6.csv",
+      "event_related_info": "summar",
+      "segment": "my pet"
+    },
+    "raw_body": null,
+    "concurrent_calls": 1,
+    "sequential_batches": null,
+    "validation_rules": [],
+    "timeout": 30,
+    "follow_redirects": true,
+    "verify_ssl": false
+  },
+  "stats": {
+    "total_requests": 1,
+    "successful_requests": 1,
+    "failed_requests": 0,
+    "success_rate": 100.0,
+    "total_test_duration": 19.12583613395691,
+    "avg_response_time": 19.120337963104248,
+    "min_response_time": 19.120337963104248,
+    "max_response_time": 19.120337963104248,
+    "avg_successful_response_time": 19.120337963104248,
+    "requests_per_second": 0.052285295816403704
+  },
+  "status": "completed"
+}

@@ -1,0 +1,26 @@
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# HTTP client for load testing
+aiohttp==3.9.1
+
+# Data validation and serialization
+pydantic==2.5.0
+
+# Static file serving
+aiofiles==23.2.0
+
+# WebSocket support (included with FastAPI)
+websockets==12.0
+
+# JSON handling and datetime
+python-multipart==0.0.6
+
+# Development and testing (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+
+# Logging and monitoring (optional)
+structlog==23.2.0

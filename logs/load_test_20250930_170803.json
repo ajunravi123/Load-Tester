@@ -1,0 +1,187 @@
+{
+  "session_id": "514cd402-8a3c-4b0f-81b2-6c05c888dd05",
+  "config": {
+    "base_url": "https://tools.impact-agents.ai/internal/keyword-finder",
+    "http_method": "POST",
+    "headers": {
+      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc"
+    },
+    "body_type": "json",
+    "request_body": {
+      "user_input": "Generate a banner image for upc 15561117128 for a summer event.",
+      "product": "MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT",
+      "keywords_csv_path": "accounts/psp/public_files/psp-keywords-v6.csv",
+      "event_related_info": "summar",
+      "segment": "my pet"
+    },
+    "raw_body": null,
+    "concurrent_calls": 1,
+    "sequential_batches": 3,
+    "validation_rules": [
+      {
+        "type": "exists",
+        "value": "Google",
+        "field_path": null,
+        "description": null
+      }
+    ],
+    "timeout": 30,
+    "follow_redirects": true,
+    "verify_ssl": false
+  },
+  "status": "completed",
+  "start_time": "2025-09-30 17:07:59.397094",
+  "end_time": "2025-09-30 17:08:03.990519",
+  "results": [
+    {
+      "status": "success",
+      "response_time": 3.7791359424591064,
+      "status_code": 200,
+      "error_message": null,
+      "timestamp": "2025-09-30 17:07:59.401801",
+      "request_data": {
+        "user_input": "Generate a banner image for upc 15561117128 for a summer event.",
+        "product": "MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT",
+        "keywords_csv_path": "accounts/psp/public_files/psp-keywords-v6.csv",
+        "event_related_info": "summar",
+        "segment": "my pet"
+      },
+      "response_data": "{\"product\":\"MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT\",\"matched_trending_keywords\":[{\"platform\":\"Google\",\"keyword\":\"planted aquarium\"},{\"platform\":\"Meta\",\"keyword\":\"#MyRescuePet\"}]}",
+      "response_headers": {
+        "Date": "Tue, 30 Sep 2025 11:38:03 GMT",
+        "Content-Type": "application/json",
+        "Transfer-Encoding": "chunked",
+        "Connection": "keep-alive",
+        "Content-Encoding": "gzip",
+        "Via": "1.1 google",
+        "cf-cache-status": "DYNAMIC",
+        "Server": "cloudflare",
+        "CF-RAY": "98736e884ff38016-MAA"
+      },
+      "request_headers": {
+        "User-Agent": "Advanced-Load-Testing-Suite/2.0",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc",
+        "Content-Type": "application/json"
+      },
+      "endpoint_url": "https://tools.impact-agents.ai/internal/keyword-finder",
+      "validation_results": [
+        {
+          "rule": {
+            "type": "exists",
+            "value": "Google",
+            "field_path": null,
+            "description": null
+          },
+          "passed": true,
+          "message": "String 'Google' found in response",
+          "actual_value": null
+        }
+      ],
+      "validation_passed": true
+    },
+    {
+      "status": "success",
+      "response_time": 0.4024159908294678,
+      "status_code": 200,
+      "error_message": null,
+      "timestamp": "2025-09-30 17:08:03.181819",
+      "request_data": {
+        "user_input": "Generate a banner image for upc 15561117128 for a summer event.",
+        "product": "MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT",
+        "keywords_csv_path": "accounts/psp/public_files/psp-keywords-v6.csv",
+        "event_related_info": "summar",
+        "segment": "my pet"
+      },
+      "response_data": "{\"product\":\"MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT\",\"matched_trending_keywords\":[{\"platform\":\"Google\",\"keyword\":\"planted aquarium\"},{\"platform\":\"Meta\",\"keyword\":\"#MyRescuePet\"}]}",
+      "response_headers": {
+        "Date": "Tue, 30 Sep 2025 11:38:03 GMT",
+        "Content-Type": "application/json",
+        "Transfer-Encoding": "chunked",
+        "Connection": "keep-alive",
+        "Content-Encoding": "gzip",
+        "Via": "1.1 google",
+        "cf-cache-status": "DYNAMIC",
+        "Server": "cloudflare",
+        "CF-RAY": "98736e8ad9958016-MAA"
+      },
+      "request_headers": {
+        "User-Agent": "Advanced-Load-Testing-Suite/2.0",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc",
+        "Content-Type": "application/json"
+      },
+      "endpoint_url": "https://tools.impact-agents.ai/internal/keyword-finder",
+      "validation_results": [
+        {
+          "rule": {
+            "type": "exists",
+            "value": "Google",
+            "field_path": null,
+            "description": null
+          },
+          "passed": true,
+          "message": "String 'Google' found in response",
+          "actual_value": null
+        }
+      ],
+      "validation_passed": true
+    },
+    {
+      "status": "success",
+      "response_time": 0.39882707595825195,
+      "status_code": 200,
+      "error_message": null,
+      "timestamp": "2025-09-30 17:08:03.584612",
+      "request_data": {
+        "user_input": "Generate a banner image for upc 15561117128 for a summer event.",
+        "product": "MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT",
+        "keywords_csv_path": "accounts/psp/public_files/psp-keywords-v6.csv",
+        "event_related_info": "summar",
+        "segment": "my pet"
+      },
+      "response_data": "{\"product\":\"MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT\",\"matched_trending_keywords\":[{\"platform\":\"Google\",\"keyword\":\"planted aquarium\"},{\"platform\":\"Meta\",\"keyword\":\"#MyRescuePet\"}]}",
+      "response_headers": {
+        "Date": "Tue, 30 Sep 2025 11:38:04 GMT",
+        "Content-Type": "application/json",
+        "Transfer-Encoding": "chunked",
+        "Connection": "keep-alive",
+        "Content-Encoding": "gzip",
+        "Via": "1.1 google",
+        "cf-cache-status": "DYNAMIC",
+        "Server": "cloudflare",
+        "CF-RAY": "98736e8d2b1a8016-MAA"
+      },
+      "request_headers": {
+        "User-Agent": "Advanced-Load-Testing-Suite/2.0",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc",
+        "Content-Type": "application/json"
+      },
+      "endpoint_url": "https://tools.impact-agents.ai/internal/keyword-finder",
+      "validation_results": [
+        {
+          "rule": {
+            "type": "exists",
+            "value": "Google",
+            "field_path": null,
+            "description": null
+          },
+          "passed": true,
+          "message": "String 'Google' found in response",
+          "actual_value": null
+        }
+      ],
+      "validation_passed": true
+    }
+  ],
+  "stats": {
+    "total_requests": 3,
+    "successful_requests": 3,
+    "failed_requests": 0,
+    "success_rate": 100.0,
+    "total_test_duration": 4.589951992034912,
+    "avg_response_time": 1.5267930030822754,
+    "min_response_time": 0.39882707595825195,
+    "max_response_time": 3.7791359424591064,
+    "avg_successful_response_time": 1.5267930030822754,
+    "requests_per_second": 0.653601607425523
+  }
+}

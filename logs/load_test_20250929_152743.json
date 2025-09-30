@@ -1,0 +1,44 @@
+[
+  {
+    "session_id": "20250929_152743",
+    "request_number": 1,
+    "timestamp": "2025-09-29T15:27:43.782690",
+    "request": {
+      "url": "https://agentic-sandbox.impact-agents.ai/api/agent/infer/stream",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFqdW4ucmF2aUBpbXBhY3RhbmFseXRpY3MuY28iLCJuYW1lIjoiQWp1biBSYXZpIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9hL0FDZzhvY0tkS0NGNjUycFFMRW9iYks0SS01RngzWVdJN0pBazJfdld0QWpIZHlHSWRfZURCYzg9czk2LWMiLCJyb2xlIjoidXNlciIsImlzX2FkbWluIjpmYWxzZSwiY2xpZW50X2lkIjoiMzZmY2ZiMTAtNDc2MS00MmRjLWJjODYtOTExNTA2MzZkZGFkIiwic3ViIjoiMTE4MDY4MTMxODA0NzQxMzcyNDA3IiwidXNlcl9pZCI6NywiZXhwIjoxNzU5OTEwMjY1fQ.pRvmjdOcF4hKMPdGDcnhHhYzakzVNKI9VgRkgUz0egQ",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+        "sec-ch-ua-mobile": "?0",
+        "Referer": "https://agentic-sandbox.impact-agents.ai/agents"
+      },
+      "data": {
+        "agentId": "b72d49f1-f68d-42d5-8d2c-36551638d96e",
+        "userInput": "Generate banner image for upc \"750683093768\" for Christmas gift"
+      }
+    },
+    "response": {
+      "status_code": 200,
+      "headers": {
+        "Date": "Mon, 29 Sep 2025 09:57:44 GMT",
+        "Content-Type": "application/x-ndjson",
+        "Transfer-Encoding": "chunked",
+        "Connection": "keep-alive",
+        "CF-RAY": "986a9e365e914174-BOM",
+        "Via": "1.1 google",
+        "cf-cache-status": "DYNAMIC",
+        "Server": "cloudflare"
+      },
+      "data": "{\"status\": \"starting\", \"message\": \"Processing your request..\"}\n{\"status\": \"processing\", \"message\": \"Test Banner Agent (Dummy) Agent's requirements are loading..\"}\n{\"status\": \"processing\", \"message\": \"Validating 3 connected Tools..\"}\n{\"status\": \"processing\", \"message\": \"Loading knowledge base..\"}\n{\"status\": \"processing\", \"message\": \"Connecting tools to Test Banner Agent (Dummy) Agent\"}\n{\"status\": \"processing\", \"message\": \"Loaded 3 tools\"}\n{\"status\": \"processing\", \"message\": \"Initializing task execution module..\"}\n{\"status\": \"processing\", \"message\": \"Validating the request..\"}\n{\"status\": \"processing\", \"message\": \"Starting task execution: Agent Execution\"}\n{\"status\": \"processing\", \"message\": \"Preparing 3 tools for your request\"}\n{\"status\": \"processing\", \"message\": \"Preprocessing Tools..\"}\n{\"status\": \"processing\", \"message\": \"Loading 1 knowledge sources\"}\n{\"status\": \"processing\", \"message\": \"Analyzing the task...\"}\n{\"status\": \"processing\", \"message\": \"Preparing for the task execution..\"}\n{\"status\": \"processing\", \"message\": \"Executing the task..\"}\n{\"status\": \"processing\", \"message\": \"Loading 1 knowledge source(s)\"}\n{\"status\": \"processing\", \"message\": \"Knowledge sources loaded\"}\n{\"status\": \"processing\", \"message\": \"Processing Tool \\\"sql_query_generator_api\\\"\"}\n{\"status\": \"processing\", \"message\": \"Preparing payload for Tool \\\"sql_query_generator_api\\\"\"}\n{\"status\": \"processing\", \"message\": \"Payload prepared for \\\"sql_query_generator_api\\\"\"}\n{\"status\": \"processing\", \"message\": \"Invoking \\\"sql_query_generator_api\\\" (POST)\"}\n{\"status\": \"processing\", \"message\": \"Process: Sql query generator\"}\n{\"status\": \"processing\", \"message\": \"Completed Tool \\\"sql_query_generator_api\\\"\"}\n{\"status\": \"processing\", \"message\": \"Processing Tool \\\"keyword_finder\\\"\"}\n{\"status\": \"processing\", \"message\": \"Preparing payload for Tool \\\"keyword_finder\\\"\"}\n{\"status\": \"processing\", \"message\": \"Payload prepared for \\\"keyword_finder\\\"\"}\n{\"status\": \"processing\", \"message\": \"Invoking \\\"keyword_finder\\\" (POST)\"}\n{\"status\": \"processing\", \"message\": \"Process: Keyword finder\"}\n{\"status\": \"processing\", \"message\": \"Completed Tool \\\"keyword_finder\\\"\"}\n{\"status\": \"processing\", \"message\": \"Processing Tool \\\"image_generation_task\\\"\"}\n{\"status\": \"processing\", \"message\": \"Preparing payload for Tool \\\"image_generation_task\\\"\"}\n{\"status\": \"processing\", \"message\": \"Payload prepared for \\\"image_generation_task\\\"\"}\n{\"status\": \"processing\", \"message\": \"Invoking \\\"image_generation_task\\\" (POST)\"}\n{\"status\": \"processing\", \"message\": \"Process: Image generation task\"}\n{\"status\": \"processing\", \"message\": \"Completed Tool \\\"image_generation_task\\\"\"}\n{\"status\": \"processing\", \"message\": \"\"}\n{\"status\": \"processing\", \"message\": \"Finalizing results..\"}\n{\"status\": \"complete\", \"result\": {\"type\": \"text\", \"content\": {\"text\": \"\\\"Product Name\\\": PLAY ON DOG TOY FETCH TEXTURE BONE 1EA\\n\\\"UPC\\\": 750683093768\\n\\\"Segment\\\" : Toys\\n\\\"Image URL\\\": https://delivery-petsuppliesplus.stylelabs.cloud/api/public/content/750683093768_1\\n\\\"Event Theme\\\" : Christmas gift\\n\\\"Headline\\\": Give the Gift of Play this Christmas!\\n\\\"Pitch\\\": Make their holidays joyful with the perfect chew toy.\\n\\\"Platform\\\" : Google, Meta\\n\\\"matched_keyword\\\" : BOGO litter, #StockUpAndSave\\n\\nGenerated banner Images: \\\"https://tools.impact-agents.ai/generated_images/dummy_image.jpg\\\"\"}, \"execution_id\": \"fc820755-fa24-4c7d-8b73-a61a3469dbef_20250929_095744\", \"log_url\": \"https://agentic-sandbox.impact-agents.ai/api/logs/fc820755-fa24-4c7d-8b73-a61a3469dbef_20250929_095744\", \"session_id\": \"e0a91f03-c511-48cc-a605-4830ccc3d01e\", \"html_content\": \"<div style=\\\"padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-family: Arial, sans-serif;\\\"><div style=\\\"line-height: 1.6; margin: 10px 0; word-wrap: break-word;\\\">\\\"Product Name\\\": PLAY ON DOG TOY FETCH TEXTURE BONE 1EA<br>\\\"UPC\\\": 750683093768<br>\\\"Segment\\\" : Toys<br>\\\"Image URL\\\": <a href=\\\"https://delivery-petsuppliesplus.stylelabs.cloud/api/public/content/750683093768_1\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\" style=\\\"color: #007bff; text-decoration: underline;\\\">https://delivery-petsuppliesplus.stylelabs.cloud/api/public/content/750683093768_1</a><br>\\\"Event Theme\\\" : Christmas gift<br>\\\"Headline\\\": Give the Gift of Play this Christmas!<br>\\\"Pitch\\\": Make their holidays joyful with the perfect chew toy.<br>\\\"Platform\\\" : Google, Meta<br>\\\"matched_keyword\\\" : BOGO litter, #StockUpAndSave<br><br>Generated banner Images: \\\"<a href=\\\"https://tools.impact-agents.ai/generated_images/dummy_image.jpg\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\" style=\\\"color: #007bff; text-decoration: underline;\\\">https://tools.impact-agents.ai/generated_images/dummy_image.jpg</a>\\\"</div><hr><h3>Image Previews:</h3><div style=\\\"display: flex; flex-wrap: wrap; gap: 15px;\\\">\\n                    <div style=\\\"border: 1px solid #ddd; border-radius: 8px; padding: 10px; max-width: 290px;\\\">\\n                        <a href=\\\"https://tools.impact-agents.ai/generated_images/dummy_image.jpg\\\" target=\\\"_blank\\\">\\n                            <img src=\\\"https://tools.impact-agents.ai/generated_images/dummy_image.jpg\\\" alt=\\\"Preview\\\" style=\\\"width: 100%; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);\\\" \\n                                onerror=\\\"this.style.display='none'; this.nextElementSibling.style.display='block';\\\">\\n                            <div style=\\\"display: none; font-size: 12px; color: #666;\\\">Image failed to load</div>\\n                        </a>\\n                        <a href=\\\"https://tools.impact-agents.ai/generated_images/dummy_image.jpg\\\" target=\\\"_blank\\\" style=\\\"font-size: 12px; display: block; color: #007bff; text-decoration: underline;\\\">\\n                            https://tools.impact-agents.ai/generated_images/du...\\n                        </a>\\n                    </div>\\n                </div></div>\", \"user_input\": \"Generate banner image for upc \\\"750683093768\\\" for Christmas gift\"}, \"execution_time_seconds\": 110.93783640861511}\n",
+      "response_time": 111.42433595657349
+    },
+    "status": "success",
+    "error_message": null,
+    "validation": {
+      "validation_string": "https://tools.impact-agents.ai/generated_images/dummy_image.jpg",
+      "validation_passed": true,
+      "validation_failure_reason": null
+    }
+  }
+]

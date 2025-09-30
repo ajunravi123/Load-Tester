@@ -1,0 +1,43 @@
+{
+  "name": "aaaa",
+  "apiUrl": "https://tools.impact-agents.ai/internal/keyword-finder",
+  "httpMethod": "POST",
+  "headers": [
+    {
+      "key": "Authorization",
+      "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc"
+    }
+  ],
+  "bodyType": "json",
+  "bodyFields": [
+    {
+      "key": "user_input",
+      "value": "Generate a banner image for upc 15561117128 for a summer event."
+    },
+    {
+      "key": "product",
+      "value": "MARINA BACKGROUND 12IN GREEN PLANTS-BLACK 1FT"
+    },
+    {
+      "key": "keywords_csv_path",
+      "value": "accounts/psp/public_files/psp-keywords-v6.csv"
+    },
+    {
+      "key": "event_related_info",
+      "value": "summar"
+    },
+    {
+      "key": "segment",
+      "value": "my pet"
+    }
+  ],
+  "rawBody": "",
+  "validationRules": [],
+  "concurrentCalls": "1",
+  "sequentialBatches": "",
+  "timeout": "30",
+  "followRedirects": true,
+  "verifySSL": false,
+  "saved_at": "2025-09-30T16:23:04.816283",
+  "id": "372744b6-d089-4dda-84af-19f286ad23c2"
+}

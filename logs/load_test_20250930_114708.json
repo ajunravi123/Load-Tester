@@ -1,0 +1,64 @@
+{
+  "session_id": "1c7e7e23-65da-4c9c-86a5-b38fdc2df85d",
+  "config": {
+    "agent_id": "014ca27b-948b-4e5f-a8e1-7742aea206e0",
+    "user_input": "who is tamal?",
+    "bearer_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc",
+    "concurrent_calls": 1,
+    "sequential_batches": null,
+    "base_domain": "https://impact-agents.ai",
+    "api_endpoint": "/api/agent/infer/stream",
+    "validation_rules": [],
+    "timeout": 30
+  },
+  "status": "completed",
+  "start_time": "2025-09-30 11:46:57.049009",
+  "end_time": "2025-09-30 11:47:08.986178",
+  "results": [
+    {
+      "status": "success",
+      "response_time": 11.91704797744751,
+      "status_code": 200,
+      "error_message": null,
+      "timestamp": "2025-09-30 11:46:57.066874",
+      "request_data": {
+        "agentId": "014ca27b-948b-4e5f-a8e1-7742aea206e0",
+        "userInput": "who is tamal?"
+      },
+      "response_data": "{\"status\": \"starting\", \"message\": \"Processing your request..\"}\n{\"status\": \"processing\", \"message\": \"IA-Website-Chatbot  Agent's requirements are loading..\"}\n{\"status\": \"processing\", \"message\": \"Validating 1 connected Tools..\"}\n{\"status\": \"processing\", \"message\": \"Connecting tools to IA-Website-Chatbot  Agent\"}\n{\"status\": \"processing\", \"message\": \"Loaded 1 tools\"}\n{\"status\": \"processing\", \"message\": \"Initializing task execution module..\"}\n{\"status\": \"processing\", \"message\": \"Validating the request..\"}\n{\"status\": \"processing\", \"message\": \"Starting task execution: Agent Execution\"}\n{\"status\": \"processing\", \"message\": \"Preparing 1 tools for your request\"}\n{\"status\": \"processing\", \"message\": \"Preprocessing Tools..\"}\n{\"status\": \"processing\", \"message\": \"Analyzing the task...\"}\n{\"status\": \"processing\", \"message\": \"Preparing for the task execution..\"}\n{\"status\": \"processing\", \"message\": \"Executing the task..\"}\n{\"status\": \"processing\", \"message\": \"Processing Tool \\\"collect_data\\\"\"}\n{\"status\": \"processing\", \"message\": \"Preparing payload for Tool \\\"collect_data\\\"\"}\n{\"status\": \"processing\", \"message\": \"Payload prepared for \\\"collect_data\\\"\"}\n{\"status\": \"processing\", \"message\": \"Invoking \\\"collect_data\\\" (POST)\"}\n{\"status\": \"processing\", \"message\": \"Process: Collect data\"}\n{\"status\": \"processing\", \"message\": \"Completed Tool \\\"collect_data\\\"\"}\n{\"status\": \"processing\", \"message\": \"\"}\n{\"status\": \"processing\", \"message\": \"Finalizing results..\"}\n{\"status\": \"complete\", \"result\": {\"type\": \"text\", \"content\": {\"text\": \"Tamal Chowdhury is the Chief Technology Officer at Impact Analytics. With over 25 years of experience, he directs the company's technological vision, utilizing his expertise in AI/ML, emerging technologies, mathematical modeling, and product engineering. Before joining Impact Analytics, Tamal held leadership positions at Incivus Technologies, C5i, Oracle Corporation, Infosys, and Unisys. He holds a PhD focused on signal mining through machine learning and mathematical programming, and his post-doctorate research centered on computational modeling, nonlinear dynamics, and deep learning.\\n\\nSources:\\nhttps://www.impactanalytics.co/about-us/tamal-chowdhury\"}, \"execution_id\": \"33602b24-0832-49c1-baa1-8dbfbd128ea6_20250930_061657\", \"log_url\": \"https://impact-agents.ai/api/logs/33602b24-0832-49c1-baa1-8dbfbd128ea6_20250930_061657\", \"session_id\": \"4b6d815f-6b8f-4276-811e-0def76f01686\", \"html_content\": \"<div style=\\\"padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-family: Arial, sans-serif;\\\"><div style=\\\"line-height: 1.6; margin: 10px 0; word-wrap: break-word;\\\">Tamal Chowdhury is the Chief Technology Officer at Impact Analytics. With over 25 years of experience, he directs the company's technological vision, utilizing his expertise in AI/ML, emerging technologies, mathematical modeling, and product engineering. Before joining Impact Analytics, Tamal held leadership positions at Incivus Technologies, C5i, Oracle Corporation, Infosys, and Unisys. He holds a PhD focused on signal mining through machine learning and mathematical programming, and his post-doctorate research centered on computational modeling, nonlinear dynamics, and deep learning.<br><br>Sources:<br><a href=\\\"https://www.impactanalytics.co/about-us/tamal-chowdhury\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\" style=\\\"color: #007bff; text-decoration: underline;\\\">https://www.impactanalytics.co/about-us/tamal-chowdhury</a></div></div>\", \"user_input\": \"who is tamal?\"}, \"execution_time_seconds\": 11.271966457366943}\n",
+      "response_headers": {
+        "Date": "Tue, 30 Sep 2025 06:16:57 GMT",
+        "Content-Type": "application/x-ndjson",
+        "Transfer-Encoding": "chunked",
+        "Connection": "keep-alive",
+        "CF-RAY": "9871982e590c7f0f-MAA",
+        "Via": "1.1 google",
+        "cf-cache-status": "DYNAMIC",
+        "Server": "cloudflare"
+      },
+      "request_headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+        "sec-ch-ua-mobile": "?0",
+        "Referer": "https://impact-agents.ai/agents"
+      },
+      "endpoint_url": "https://impact-agents.ai/api/agent/infer/stream",
+      "validation_results": [],
+      "validation_passed": true
+    }
+  ],
+  "stats": {
+    "total_requests": 1,
+    "successful_requests": 1,
+    "failed_requests": 0,
+    "success_rate": 100.0,
+    "total_test_duration": 11.923301696777344,
+    "avg_response_time": 11.91704797744751,
+    "min_response_time": 11.91704797744751,
+    "max_response_time": 11.91704797744751,
+    "avg_successful_response_time": 11.91704797744751,
+    "requests_per_second": 0.08386938663728372
+  }
+}
