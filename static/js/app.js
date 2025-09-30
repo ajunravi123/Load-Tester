@@ -11,6 +11,15 @@ class LoadTestApp {
         this.editingValidationIndex = null;
         this.currentConfigId = null;
         this.currentConfigName = null;
+        this.hasUnsavedChanges = false;
+        this.isLoadingConfig = false;
+        
+        // Chart instances
+        this.charts = {
+            responseTime: null,
+            successRate: null,
+            statusCode: null
+        };
         
         this.init();
     }
@@ -19,6 +28,8 @@ class LoadTestApp {
         this.connectWebSocket();
         this.setupEventListeners();
         this.loadTheme();
+        this.setupBeforeUnloadWarning();
+        this.setupChangeTracking();
     }
     
     // Theme Management
@@ -34,6 +45,11 @@ class LoadTestApp {
         document.documentElement.setAttribute('data-theme', newTheme);
         localStorage.setItem('theme', newTheme);
         this.updateThemeIcon(newTheme);
+        
+        // Re-render charts with new theme colors if we have results
+        if (this.currentSession) {
+            this.renderCharts(this.currentSession);
+        }
     }
     
     updateThemeIcon(theme) {
@@ -42,7 +58,16 @@ class LoadTestApp {
     }
     
     newTest() {
-        if (confirm('Are you sure you want to clear all fields and start a new test?')) {
+        // Check if there's a loaded configuration with unsaved changes
+        let confirmMessage = 'Are you sure you want to clear all fields and start a new test?';
+        if (this.currentConfigId && this.hasUnsavedChanges) {
+            confirmMessage = 'Close configuration? Any unsaved changes will be lost.\n\nAre you sure you want to start a new test?';
+        }
+        
+        if (confirm(confirmMessage)) {
+            // Temporarily disable change tracking while clearing
+            this.isLoadingConfig = true;
+            
             // Clear all fields
             document.getElementById('apiUrl').value = '';
             document.getElementById('httpMethod').value = 'POST';
@@ -89,20 +114,40 @@ class LoadTestApp {
                 resultsSection.innerHTML = '<div class="text-center text-muted py-5">Run a test to see results here</div>';
             }
             
-            // Hide stats and progress
+            // Hide stats, charts and progress
             const statsGrid = document.getElementById('statsGrid');
             const progressCard = document.getElementById('progressCard');
             const resultsTableContainer = document.getElementById('resultsTableContainer');
+            const chartsSection = document.getElementById('chartsSection');
             if (statsGrid) statsGrid.style.display = 'none';
             if (progressCard) progressCard.style.display = 'none';
             if (resultsTableContainer) resultsTableContainer.style.display = 'none';
+            if (chartsSection) chartsSection.style.display = 'none';
+            
+            // Destroy chart instances
+            Object.values(this.charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+            this.charts = {
+                responseTime: null,
+                successRate: null,
+                statusCode: null
+            };
             
             // Clear config tracking
             this.currentConfigId = null;
             this.currentConfigName = null;
+            this.hasUnsavedChanges = false;
+            
+            // Hide config name bar
+            const configNameBar = document.getElementById('configNameBar');
+            if (configNameBar) configNameBar.style.display = 'none';
             
             // Update empty states
             this.updateEmptyStates();
+            
+            // Re-enable change tracking
+            this.isLoadingConfig = false;
             
             this.showToast('✨ Ready for a new test!', 'success');
         }
@@ -181,6 +226,15 @@ class LoadTestApp {
         // Config
         document.getElementById('saveConfigBtn').addEventListener('click', () => this.saveConfig());
         document.getElementById('loadConfigBtn').addEventListener('click', () => this.showLoadConfigModal());
+        
+        // Config Name Bar
+        document.getElementById('editConfigNameBtn').addEventListener('click', () => this.enableConfigNameEdit());
+        document.getElementById('saveConfigNameBtn').addEventListener('click', () => this.saveConfigName());
+        document.getElementById('cancelConfigNameBtn').addEventListener('click', () => this.cancelConfigNameEdit());
+        document.getElementById('configNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.saveConfigName();
+            if (e.key === 'Escape') this.cancelConfigNameEdit();
+        });
     }
     
     toggleBodySection() {
@@ -204,6 +258,7 @@ class LoadTestApp {
     addHeader(key = '', value = '') {
         const index = this.headers.length;
         this.headers.push({ key, value });
+        this.markAsChanged();
         
         const list = document.getElementById('headersList');
         const item = document.createElement('div');
@@ -235,6 +290,7 @@ class LoadTestApp {
         [keyInput, valueInput].forEach(input => {
             input.addEventListener('input', (e) => {
                 this.headers[parseInt(e.target.dataset.index)][e.target.dataset.field] = e.target.value;
+                this.markAsChanged();
             });
         });
         
@@ -247,6 +303,7 @@ class LoadTestApp {
     
     removeHeader(index) {
         this.headers.splice(index, 1);
+        this.markAsChanged();
         this.renderHeaders();
     }
     
@@ -261,6 +318,7 @@ class LoadTestApp {
     addBodyField(key = '', value = '') {
         const index = this.bodyFields.length;
         this.bodyFields.push({ key, value });
+        this.markAsChanged();
         
         const list = document.getElementById('bodyFieldsList');
         const item = document.createElement('div');
@@ -292,6 +350,7 @@ class LoadTestApp {
         [keyInput, valueInput].forEach(input => {
             input.addEventListener('input', (e) => {
                 this.bodyFields[parseInt(e.target.dataset.index)][e.target.dataset.field] = e.target.value;
+                this.markAsChanged();
             });
         });
         
@@ -304,6 +363,7 @@ class LoadTestApp {
     
     removeBodyField(index) {
         this.bodyFields.splice(index, 1);
+        this.markAsChanged();
         this.renderBodyFields();
     }
     
@@ -494,6 +554,7 @@ class LoadTestApp {
         
         const rule = { type, value, field_path: fieldPath || null, description: description || null };
         this.validationRules.push(rule);
+        this.markAsChanged();
         this.renderValidationRules();
         bootstrap.Modal.getInstance(document.getElementById('validationModal')).hide();
         
@@ -577,6 +638,7 @@ class LoadTestApp {
             description: description || null
         };
         
+        this.markAsChanged();
         this.renderValidationRules();
         bootstrap.Modal.getInstance(document.getElementById('validationModal')).hide();
         
@@ -597,6 +659,7 @@ class LoadTestApp {
     
     removeValidationRule(index) {
         this.validationRules.splice(index, 1);
+        this.markAsChanged();
         this.renderValidationRules();
     }
     
@@ -683,6 +746,7 @@ class LoadTestApp {
         document.getElementById('resultsEmpty').style.display = 'none';
         document.getElementById('progressCard').style.display = 'block';
         document.getElementById('statsGrid').style.display = 'none';
+        document.getElementById('chartsSection').style.display = 'none';
         document.getElementById('resultsTableContainer').style.display = 'none';
     }
     
@@ -700,6 +764,9 @@ class LoadTestApp {
         document.getElementById('statAvgTime').textContent = `${Math.round(stats.avg_response_time * 1000)}ms`;
         document.getElementById('statRPS').textContent = stats.requests_per_second.toFixed(1);
         document.getElementById('statFailed').textContent = stats.failed_requests;
+        
+        // Render charts
+        this.renderCharts(session);
         
         document.getElementById('resultsTableContainer').style.display = 'block';
         const tbody = document.getElementById('resultsTableBody');
@@ -727,21 +794,243 @@ class LoadTestApp {
         });
     }
     
+    renderCharts(session) {
+        document.getElementById('chartsSection').style.display = 'block';
+        
+        // Destroy existing charts to prevent memory leaks
+        Object.values(this.charts).forEach(chart => {
+            if (chart) chart.destroy();
+        });
+        
+        // Get theme
+        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textColor = isDarkMode ? '#e9ecef' : '#212529';
+        const gridColor = isDarkMode ? '#495057' : '#dee2e6';
+        
+        // 1. Response Time Chart
+        this.renderResponseTimeChart(session, textColor, gridColor);
+        
+        // 2. Success Rate Pie Chart
+        this.renderSuccessRateChart(session, textColor);
+        
+        // 3. Status Code Distribution
+        this.renderStatusCodeChart(session, textColor, gridColor);
+    }
+    
+    renderResponseTimeChart(session, textColor, gridColor) {
+        const ctx = document.getElementById('responseTimeChart');
+        if (!ctx) return;
+        
+        const labels = session.results.map((_, index) => `#${index + 1}`);
+        const responseTimes = session.results.map(r => (r.response_time * 1000).toFixed(2));
+        const backgroundColors = session.results.map(r => 
+            r.status === 'success' ? 'rgba(25, 135, 84, 0.7)' : 'rgba(220, 53, 69, 0.7)'
+        );
+        
+        this.charts.responseTime = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Response Time (ms)',
+                    data: responseTimes,
+                    backgroundColor: backgroundColors,
+                    borderColor: backgroundColors.map(c => c.replace('0.7', '1')),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.parsed.y}ms`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { 
+                            color: textColor,
+                            callback: function(value) {
+                                return value + 'ms';
+                            }
+                        },
+                        grid: { color: gridColor }
+                    },
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    }
+                }
+            }
+        });
+    }
+    
+    renderSuccessRateChart(session, textColor) {
+        const ctx = document.getElementById('successRateChart');
+        if (!ctx) return;
+        
+        const successCount = session.results.filter(r => r.status === 'success').length;
+        const failedCount = session.results.length - successCount;
+        
+        this.charts.successRate = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Success', 'Failed'],
+                datasets: [{
+                    data: [successCount, failedCount],
+                    backgroundColor: [
+                        'rgba(25, 135, 84, 0.8)',
+                        'rgba(220, 53, 69, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(25, 135, 84, 1)',
+                        'rgba(220, 53, 69, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { 
+                            color: textColor,
+                            padding: 15,
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                return `${context.label}: ${context.parsed} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    renderStatusCodeChart(session, textColor, gridColor) {
+        const ctx = document.getElementById('statusCodeChart');
+        if (!ctx) return;
+        
+        // Count status codes
+        const statusCodes = {};
+        session.results.forEach(r => {
+            const code = r.status_code || 'Error';
+            statusCodes[code] = (statusCodes[code] || 0) + 1;
+        });
+        
+        const labels = Object.keys(statusCodes).sort();
+        const data = labels.map(label => statusCodes[label]);
+        
+        // Color based on status code type
+        const colors = labels.map(code => {
+            if (code === 'Error') return 'rgba(220, 53, 69, 0.7)';
+            const numCode = parseInt(code);
+            if (numCode >= 200 && numCode < 300) return 'rgba(25, 135, 84, 0.7)';
+            if (numCode >= 300 && numCode < 400) return 'rgba(13, 110, 253, 0.7)';
+            if (numCode >= 400 && numCode < 500) return 'rgba(255, 193, 7, 0.7)';
+            if (numCode >= 500) return 'rgba(220, 53, 69, 0.7)';
+            return 'rgba(108, 117, 125, 0.7)';
+        });
+        
+        this.charts.statusCode = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Count',
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: colors.map(c => c.replace('0.7', '1')),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Count: ${context.parsed.y}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { 
+                            color: textColor,
+                            stepSize: 1
+                        },
+                        grid: { color: gridColor }
+                    },
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    }
+                }
+            }
+        });
+    }
+    
     showDetails(index) {
         const result = this.currentSession.results[index];
+        
+        // Format request details
+        let requestBody = result.request_data;
+        try {
+            if (typeof requestBody === 'string') {
+                requestBody = JSON.parse(requestBody);
+            }
+        } catch (e) {
+            // Keep as string if not valid JSON
+        }
         
         document.getElementById('requestDetails').textContent = JSON.stringify({
             method: this.currentSession.config.http_method,
             url: result.endpoint_url,
             headers: result.request_headers,
-            body: result.request_data
+            body: requestBody
         }, null, 2);
+        
+        // Format response details with parsed body
+        let responseBody = result.response_data;
+        try {
+            if (typeof responseBody === 'string' && responseBody) {
+                responseBody = JSON.parse(responseBody);
+            }
+        } catch (e) {
+            // Keep as string if not valid JSON
+            responseBody = result.response_data ? result.response_data.substring(0, 3000) : 'No data';
+        }
         
         document.getElementById('responseDetails').textContent = JSON.stringify({
             status: result.status_code,
             time: result.response_time,
             headers: result.response_headers,
-            body: result.response_data ? result.response_data.substring(0, 3000) : 'No data'
+            body: responseBody
         }, null, 2);
         
         const validationDiv = document.getElementById('validationDetails');
@@ -784,6 +1073,167 @@ class LoadTestApp {
     playCompletionSound() {
         const audio = document.getElementById('completionSound');
         if (audio) audio.play().catch(() => {});
+    }
+    
+    // Config Name Bar Management
+    showConfigNameBar(configName) {
+        const bar = document.getElementById('configNameBar');
+        const nameText = document.getElementById('configNameText');
+        bar.style.display = 'block';
+        nameText.textContent = configName || 'Unnamed Configuration';
+        
+        // Make sure we're in view mode
+        document.getElementById('configNameView').style.setProperty('display', 'flex', 'important');
+        document.getElementById('configNameEdit').style.setProperty('display', 'none', 'important');
+    }
+    
+    hideConfigNameBar() {
+        const bar = document.getElementById('configNameBar');
+        bar.style.display = 'none';
+        this.currentConfigId = null;
+        this.currentConfigName = null;
+    }
+    
+    setupBeforeUnloadWarning() {
+        // Warn user if they try to leave the page with a loaded configuration
+        window.addEventListener('beforeunload', (e) => {
+            if (this.currentConfigId && this.hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = 'Close configuration? Any unsaved changes will be lost.';
+                return e.returnValue;
+            }
+        });
+    }
+    
+    setupChangeTracking() {
+        // Track changes to form fields
+        const formFields = [
+            'apiUrl', 'httpMethod', 'concurrentCalls', 'sequentialBatches', 
+            'timeout', 'followRedirects', 'verifySSL', 'rawBodyInput'
+        ];
+        
+        formFields.forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.addEventListener('input', () => this.markAsChanged());
+                field.addEventListener('change', () => this.markAsChanged());
+            }
+        });
+        
+        // Also mark as changed when body type changes
+        document.querySelectorAll('[data-body-type]').forEach(btn => {
+            btn.addEventListener('click', () => this.markAsChanged());
+        });
+    }
+    
+    markAsChanged() {
+        // Don't mark as changed if we're currently loading a config
+        if (this.currentConfigId && !this.isLoadingConfig) {
+            this.hasUnsavedChanges = true;
+        }
+    }
+    
+    enableConfigNameEdit() {
+        const viewMode = document.getElementById('configNameView');
+        const editMode = document.getElementById('configNameEdit');
+        const input = document.getElementById('configNameInput');
+        const currentName = document.getElementById('configNameText').textContent;
+        
+        // Switch to edit mode
+        viewMode.style.setProperty('display', 'none', 'important');
+        editMode.style.setProperty('display', 'flex', 'important');
+        
+        // Populate input with current name
+        input.value = currentName;
+        input.focus();
+        input.select();
+    }
+    
+    cancelConfigNameEdit() {
+        // Switch back to view mode
+        document.getElementById('configNameView').style.setProperty('display', 'flex', 'important');
+        document.getElementById('configNameEdit').style.setProperty('display', 'none', 'important');
+    }
+    
+    async saveConfigName() {
+        const newName = document.getElementById('configNameInput').value.trim();
+        if (!newName) {
+            this.showToast('Configuration name cannot be empty', 'warning');
+            return;
+        }
+        
+        if (!this.currentConfigId) {
+            this.showToast('No configuration loaded', 'warning');
+            return;
+        }
+        
+        // Check if name actually changed
+        if (newName === this.currentConfigName) {
+            this.cancelConfigNameEdit();
+            return;
+        }
+        
+        // Check for duplicate names (excluding current config)
+        try {
+            const listResponse = await fetch('/api/config/list');
+            const data = await listResponse.json();
+            const duplicate = data.configs.find(c => 
+                c.name.toLowerCase() === newName.toLowerCase() && 
+                c.id !== this.currentConfigId
+            );
+            
+            if (duplicate) {
+                this.showToast('Configuration name already exists. Please choose a different name.', 'warning');
+                return;
+            }
+        } catch (error) {
+            console.error('Error checking for duplicates:', error);
+        }
+        
+        // Update the name
+        this.currentConfigName = newName;
+        
+        // Auto-save with new name
+        const config = {
+            name: newName,
+            id: this.currentConfigId,
+            apiUrl: document.getElementById('apiUrl').value,
+            httpMethod: document.getElementById('httpMethod').value,
+            headers: this.headers,
+            bodyType: this.bodyType,
+            bodyFields: this.bodyFields,
+            rawBody: document.getElementById('rawBodyInput').value,
+            validationRules: this.validationRules,
+            concurrentCalls: document.getElementById('concurrentCalls').value,
+            sequentialBatches: document.getElementById('sequentialBatches').value,
+            timeout: document.getElementById('timeout').value,
+            followRedirects: document.getElementById('followRedirects').checked,
+            verifySSL: document.getElementById('verifySSL').checked
+        };
+        
+        try {
+            const response = await fetch('/api/config/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to save');
+            }
+            
+            // Update display
+            document.getElementById('configNameText').textContent = newName;
+            this.hasUnsavedChanges = false;
+            
+            // Switch back to view mode
+            this.cancelConfigNameEdit();
+            
+            this.showToast(`Configuration renamed to "${newName}"`, 'success');
+        } catch (error) {
+            this.showToast(error.message || 'Failed to update configuration name', 'danger');
+        }
     }
     
     // Config Management
@@ -855,6 +1305,7 @@ class LoadTestApp {
             // Update current config tracking
             this.currentConfigId = result.id;
             this.currentConfigName = name;
+            this.hasUnsavedChanges = false;
             
             this.showToast(isUpdate ? 'Configuration updated successfully' : 'Configuration saved successfully', 'success');
         } catch (error) {
@@ -906,7 +1357,17 @@ class LoadTestApp {
     }
     
     async loadConfig(configId) {
+        // Check if there's already a configuration loaded with unsaved changes
+        if (this.currentConfigId && this.currentConfigId !== configId && this.hasUnsavedChanges) {
+            if (!confirm('Close configuration? Any unsaved changes will be lost.\n\nLoad a different configuration?')) {
+                return;
+            }
+        }
+        
         try {
+            // Set flag to prevent marking as changed while loading
+            this.isLoadingConfig = true;
+            
             const response = await fetch(`/api/config/${configId}`);
             const config = await response.json();
             
@@ -927,6 +1388,10 @@ class LoadTestApp {
             // Track the loaded config
             this.currentConfigId = config.id;
             this.currentConfigName = config.name;
+            this.hasUnsavedChanges = false;
+            
+            // Show config name bar
+            this.showConfigNameBar(config.name);
             
             this.renderHeaders();
             this.renderBodyFields();
@@ -937,9 +1402,13 @@ class LoadTestApp {
             });
             this.toggleBodySection();
             
+            // Done loading - re-enable change tracking
+            this.isLoadingConfig = false;
+            
             bootstrap.Modal.getInstance(document.getElementById('loadConfigModal')).hide();
             this.showToast(`Configuration "${config.name}" loaded`, 'success');
         } catch (error) {
+            this.isLoadingConfig = false;
             this.showToast('Failed to load configuration', 'danger');
         }
     }

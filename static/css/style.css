@@ -70,6 +70,22 @@ body {
     color: #e9ecef !important;
 }
 
+/* Config Name Bar */
+#configNameBar {
+    transition: all 0.3s;
+}
+
+[data-theme="dark"] #configNameBar {
+    background: #25282e !important;
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] #configNameInput {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--bs-body-color);
+}
+
 /* Connection Status */
 .connection-status {
     display: flex;
