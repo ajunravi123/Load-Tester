@@ -25,11 +25,58 @@ class LoadTestApp {
     }
     
     init() {
+        this.checkAuthentication();
         this.connectWebSocket();
         this.setupEventListeners();
         this.loadTheme();
         this.setupBeforeUnloadWarning();
         this.setupChangeTracking();
+        this.displayUserInfo();
+    }
+    
+    // Authentication
+    checkAuthentication() {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    }
+    
+    getAuthHeaders() {
+        const token = localStorage.getItem('access_token');
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        };
+    }
+    
+    displayUserInfo() {
+        const name = localStorage.getItem('name') || localStorage.getItem('username') || 'User';
+        document.getElementById('userName').textContent = name;
+    }
+    
+    async logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            try {
+                await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: this.getAuthHeaders()
+                });
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+            
+            // Clear local storage
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('username');
+            localStorage.removeItem('name');
+            
+            // Clear cookie
+            document.cookie = 'access_token=; path=/; max-age=0';
+            
+            // Redirect to login
+            window.location.href = '/login';
+        }
     }
     
     // Theme Management
@@ -187,6 +234,9 @@ class LoadTestApp {
     setupEventListeners() {
         // Theme toggle
         document.getElementById('themeToggle').addEventListener('click', () => this.toggleTheme());
+        
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
         
         // New Test
         document.getElementById('newTestBtn').addEventListener('click', () => this.newTest());
@@ -706,7 +756,7 @@ class LoadTestApp {
             
             const response = await fetch('/api/test/start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getAuthHeaders(),
                 body: JSON.stringify(config)
             });
             
@@ -737,7 +787,9 @@ class LoadTestApp {
     }
     
     async loadResults(sessionId) {
-        const response = await fetch(`/api/test/${sessionId}`);
+        const response = await fetch(`/api/test/${sessionId}`, {
+            headers: this.getAuthHeaders()
+        });
         const session = await response.json();
         this.displayResults(session);
     }
@@ -1175,7 +1227,9 @@ class LoadTestApp {
         
         // Check for duplicate names (excluding current config)
         try {
-            const listResponse = await fetch('/api/config/list');
+            const listResponse = await fetch('/api/config/list', {
+                headers: this.getAuthHeaders()
+            });
             const data = await listResponse.json();
             const duplicate = data.configs.find(c => 
                 c.name.toLowerCase() === newName.toLowerCase() && 
@@ -1214,7 +1268,7 @@ class LoadTestApp {
         try {
             const response = await fetch('/api/config/save', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getAuthHeaders(),
                 body: JSON.stringify(config)
             });
             
@@ -1258,7 +1312,9 @@ class LoadTestApp {
         // Check for duplicate names (only if saving as new)
         if (!isUpdate) {
             try {
-                const listResponse = await fetch('/api/config/list');
+                const listResponse = await fetch('/api/config/list', {
+                    headers: this.getAuthHeaders()
+                });
                 const data = await listResponse.json();
                 const existingNames = data.configs.map(c => c.name.toLowerCase());
                 
@@ -1291,7 +1347,7 @@ class LoadTestApp {
         try {
             const response = await fetch('/api/config/save', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getAuthHeaders(),
                 body: JSON.stringify(config)
             });
             
@@ -1315,7 +1371,9 @@ class LoadTestApp {
     
     async showLoadConfigModal() {
         try {
-            const response = await fetch('/api/config/list');
+            const response = await fetch('/api/config/list', {
+                headers: this.getAuthHeaders()
+            });
             const data = await response.json();
             
             const list = document.getElementById('configsList');
@@ -1331,12 +1389,13 @@ class LoadTestApp {
                 
                 data.configs.forEach(config => {
                     const item = document.createElement('div');
-                    item.className = 'list-group-item config-item';
+                    const isActive = config.id === this.currentConfigId;
+                    item.className = `list-group-item config-item${isActive ? ' active' : ''}`;
                     item.style.cursor = 'pointer';
                     item.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
                             <div class="flex-grow-1">
-                                <div class="config-item-name">${config.name}</div>
+                                <div class="config-item-name">${config.name}${isActive ? ' <small class="text-primary">(Current)</small>' : ''}</div>
                                 <div class="config-item-meta">Saved: ${new Date(config.saved_at).toLocaleString()}</div>
                             </div>
                             <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); app.deleteConfig('${config.id}')">
@@ -1368,7 +1427,9 @@ class LoadTestApp {
             // Set flag to prevent marking as changed while loading
             this.isLoadingConfig = true;
             
-            const response = await fetch(`/api/config/${configId}`);
+            const response = await fetch(`/api/config/${configId}`, {
+                headers: this.getAuthHeaders()
+            });
             const config = await response.json();
             
             document.getElementById('apiUrl').value = config.apiUrl || '';
@@ -1417,7 +1478,10 @@ class LoadTestApp {
         if (!confirm('Delete this configuration?')) return;
         
         try {
-            const response = await fetch(`/api/config/${configId}`, { method: 'DELETE' });
+            const response = await fetch(`/api/config/${configId}`, { 
+                method: 'DELETE',
+                headers: this.getAuthHeaders()
+            });
             if (!response.ok) throw new Error('Failed to delete');
             
             this.showToast('Configuration deleted', 'success');

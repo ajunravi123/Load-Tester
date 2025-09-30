@@ -8,6 +8,9 @@ aiohttp==3.9.1
 # Data validation and serialization
 pydantic==2.5.0
 
+# JWT Authentication
+PyJWT==2.8.0
+
 # Static file serving
 aiofiles==23.2.0
 

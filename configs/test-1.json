@@ -1,12 +1,12 @@
 {
-  "name": "test-1",
-  "id": "1494b0b0-835e-479b-8ae6-3cb79ec33673",
+  "name": "Test-1",
+  "id": "d241a2fa-d919-4bd8-9fda-c4579179558b",
   "apiUrl": "https://tools.impact-agents.ai/internal/keyword-finder",
   "httpMethod": "POST",
   "headers": [
     {
       "key": "Authorization",
-      "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc"
+      "value": "Bearer eAASSSyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFnZW50c0BpbXBhY3RhbmFseXRpY3MuY28iLCJleHAiOjE3NjAzNjEwMDEsImlhdCI6MTc1MjU4NTAwMX0.UcQd2XUQpTVloQERPy7KzmkYo1H2DFWksNzYHukgfrc"
     }
   ],
   "bodyType": "json",
@@ -46,6 +46,6 @@
   "timeout": "30",
   "followRedirects": true,
   "verifySSL": false,
-  "saved_at": "2025-09-30T17:20:52.279636",
-  "created_at": "2025-09-30T17:16:29.564538"
+  "saved_at": "2025-09-30T22:27:13.348725",
+  "created_at": "2025-09-30T20:19:46.058757"
 }

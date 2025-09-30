@@ -10,14 +10,25 @@ from datetime import datetime
 import ssl
 from enum import Enum
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
 import re
+import jwt
+from datetime import datetime, timedelta
 
 # Disable SSL verification for development
 ssl._create_default_https_context = ssl._create_unverified_context
+
+# JWT Configuration
+JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production-2024")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_DAYS = 14
+
+# HTTP Bearer token security
+security = HTTPBearer()
 
 class ValidationType(str, Enum):
     EXISTS = "exists"
@@ -35,6 +46,11 @@ class ValidationRule:
     value: Any
     field_path: Optional[str] = None  # For JSON path validation
     description: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    """Login request model"""
+    username: str
+    password: str
 
 class LoadTestConfig(BaseModel):
     """Configuration for load test"""
@@ -472,9 +488,61 @@ class EnhancedLoadTester:
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
 
+# Authentication Functions
+def load_users():
+    """Load users from JSON file"""
+    try:
+        with open('users.json', 'r') as f:
+            data = json.load(f)
+            return data.get('users', [])
+    except FileNotFoundError:
+        return []
+
+def authenticate_user(username: str, password: str):
+    """Authenticate user credentials"""
+    users = load_users()
+    for user in users:
+        if user['username'] == username and user['password'] == password:
+            return user
+    return None
+
+def create_token(username: str, name: str):
+    """Create JWT token"""
+    expiration = datetime.utcnow() + timedelta(days=JWT_EXPIRATION_DAYS)
+    payload = {
+        'username': username,
+        'name': name,
+        'exp': expiration
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return token
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify JWT token"""
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+def optional_verify_token(request: Request):
+    """Optional token verification for redirects"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except:
+        return None
+
 # FastAPI app initialization
 app = FastAPI(
-    title="Advanced Load Testing Suite",
+    title="ImpactX - Load Testing Tool",
     description="A comprehensive load testing application with futuristic UI and advanced validation capabilities",
     version="2.0.0"
 )
@@ -488,14 +556,50 @@ active_sessions: Dict[str, TestSession] = {}
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    """Serve the main UI"""
-    with open("static/index.html", "r") as f:
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Serve the login page"""
+    with open("static/login.html", "r") as f:
         return HTMLResponse(content=f.read())
 
+@app.post("/api/login")
+async def login(login_request: LoginRequest):
+    """Authenticate user and return JWT token"""
+    user = authenticate_user(login_request.username, login_request.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    token = create_token(user['username'], user['name'])
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "username": user['username'],
+        "name": user['name'],
+        "expires_in": JWT_EXPIRATION_DAYS * 24 * 60 * 60  # seconds
+    }
+
+@app.post("/api/logout")
+async def logout(user: dict = Depends(verify_token)):
+    """Logout endpoint (token invalidation handled client-side)"""
+    return {"message": "Logged out successfully"}
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """Serve the main UI (requires authentication)"""
+    # Check if user has valid token via cookie
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        with open("static/index.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except:
+        return RedirectResponse(url="/login", status_code=303)
+
 @app.post("/api/test/start")
-async def start_load_test(config: LoadTestConfig):
+async def start_load_test(config: LoadTestConfig, user: dict = Depends(verify_token)):
     """Start a new load test"""
     try:
         tester = EnhancedLoadTester(config)
@@ -513,7 +617,7 @@ async def start_load_test(config: LoadTestConfig):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/test/{session_id}")
-async def get_test_results(session_id: str):
+async def get_test_results(session_id: str, user: dict = Depends(verify_token)):
     """Get test results by session ID"""
     if session_id not in active_sessions:
         raise HTTPException(status_code=404, detail="Test session not found")
@@ -521,7 +625,7 @@ async def get_test_results(session_id: str):
     return active_sessions[session_id]
 
 @app.get("/api/test/history")
-async def get_test_history():
+async def get_test_history(user: dict = Depends(verify_token)):
     """Get list of all test sessions"""
     log_files = []
     if os.path.exists("logs"):
@@ -537,7 +641,7 @@ async def get_test_history():
     return {"sessions": sorted(log_files, key=lambda x: x.get("timestamp", ""), reverse=True)}
 
 @app.post("/api/config/save")
-async def save_config(config: Dict[str, Any]):
+async def save_config(config: Dict[str, Any], user: dict = Depends(verify_token)):
     """Save or update configuration to backend"""
     try:
         config_dir = "configs"
@@ -610,7 +714,7 @@ async def save_config(config: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=f"Failed to save config: {str(e)}")
 
 @app.get("/api/config/list")
-async def list_configs():
+async def list_configs(user: dict = Depends(verify_token)):
     """List all saved configurations"""
     try:
         config_dir = "configs"
@@ -641,7 +745,7 @@ async def list_configs():
         raise HTTPException(status_code=500, detail=f"Failed to list configs: {str(e)}")
 
 @app.get("/api/config/{config_id}")
-async def get_config(config_id: str):
+async def get_config(config_id: str, user: dict = Depends(verify_token)):
     """Get a specific configuration"""
     try:
         config_dir = "configs"
@@ -662,7 +766,7 @@ async def get_config(config_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to load config: {str(e)}")
 
 @app.delete("/api/config/{config_id}")
-async def delete_config(config_id: str):
+async def delete_config(config_id: str, user: dict = Depends(verify_token)):
     """Delete a configuration"""
     try:
         config_dir = "configs"
@@ -693,7 +797,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @app.get("/api/validation-types")
-async def get_validation_types():
+async def get_validation_types(user: dict = Depends(verify_token)):
     """Get available validation types"""
     return {
         "types": [
