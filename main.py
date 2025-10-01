@@ -63,7 +63,7 @@ class LoadTestConfig(BaseModel):
     concurrent_calls: int = Field(default=1, ge=1, le=1000, description="Number of simultaneous requests")
     sequential_batches: Optional[int] = Field(default=None, ge=1, le=100, description="Number of sequential batches")
     validation_rules: List[Dict[str, Any]] = Field(default=[], description="Array of validation rules")
-    timeout: int = Field(default=30, ge=1, le=300, description="Request timeout in seconds")
+    timeout: int = Field(default=600, ge=1, le=1800, description="Request timeout in seconds")
     follow_redirects: bool = Field(default=True, description="Follow HTTP redirects")
     verify_ssl: bool = Field(default=False, description="Verify SSL certificates")
 
@@ -123,9 +123,12 @@ class EnhancedLoadTester:
         self.endpoint = config.base_url
         self.session_id = str(uuid.uuid4())
         self.log_directory = "logs"
+        self.load_test_directory = os.path.join(self.log_directory, "load_test")
+        self.summary_directory = os.path.join(self.log_directory, "summary")
         
-        # Create logs directory if it doesn't exist
-        os.makedirs(self.log_directory, exist_ok=True)
+        # Create directories if they don't exist
+        os.makedirs(self.load_test_directory, exist_ok=True)
+        os.makedirs(self.summary_directory, exist_ok=True)
         
     def _get_headers(self) -> Dict[str, str]:
         """Generate request headers from config"""
@@ -471,13 +474,13 @@ class EnhancedLoadTester:
         # Convert to serializable format
         session_dict = test_session.dict()
         
-        # Save detailed results
-        results_file = os.path.join(self.log_directory, f"load_test_{timestamp}.json")
+        # Save detailed results to load_test folder
+        results_file = os.path.join(self.load_test_directory, f"load_test_{timestamp}.json")
         with open(results_file, 'w') as f:
             json.dump(session_dict, f, indent=2, default=str)
         
-        # Save summary
-        summary_file = os.path.join(self.log_directory, f"summary_{timestamp}.json")
+        # Save summary to summary folder
+        summary_file = os.path.join(self.summary_directory, f"summary_{timestamp}.json")
         summary = {
             "session_id": test_session.session_id,
             "timestamp": timestamp,
@@ -487,6 +490,49 @@ class EnhancedLoadTester:
         }
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
+
+# Utility Functions
+def migrate_log_files():
+    """Migrate existing log files to new folder structure"""
+    logs_dir = "logs"
+    load_test_dir = os.path.join(logs_dir, "load_test")
+    summary_dir = os.path.join(logs_dir, "summary")
+    
+    # Create directories if they don't exist
+    os.makedirs(load_test_dir, exist_ok=True)
+    os.makedirs(summary_dir, exist_ok=True)
+    
+    if not os.path.exists(logs_dir):
+        return
+    
+    # Move files to appropriate folders
+    for filename in os.listdir(logs_dir):
+        if not filename.endswith('.json'):
+            continue
+            
+        old_path = os.path.join(logs_dir, filename)
+        
+        # Skip if it's not a file (could be directory)
+        if not os.path.isfile(old_path):
+            continue
+        
+        # Determine destination based on filename
+        if filename.startswith("load_test_"):
+            new_path = os.path.join(load_test_dir, filename)
+            if not os.path.exists(new_path):
+                try:
+                    os.rename(old_path, new_path)
+                    print(f"Moved {filename} to load_test folder")
+                except Exception as e:
+                    print(f"Error moving {filename}: {e}")
+        elif filename.startswith("summary_"):
+            new_path = os.path.join(summary_dir, filename)
+            if not os.path.exists(new_path):
+                try:
+                    os.rename(old_path, new_path)
+                    print(f"Moved {filename} to summary folder")
+                except Exception as e:
+                    print(f"Error moving {filename}: {e}")
 
 # Authentication Functions
 def load_users():
@@ -552,6 +598,12 @@ manager = ConnectionManager()
 
 # Store active test sessions
 active_sessions: Dict[str, TestSession] = {}
+
+# Startup event to migrate existing log files
+@app.on_event("startup")
+async def startup_event():
+    """Run migrations on startup"""
+    migrate_log_files()
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -628,6 +680,20 @@ async def get_test_results(session_id: str, user: dict = Depends(verify_token)):
 async def get_test_history(user: dict = Depends(verify_token)):
     """Get list of all test sessions"""
     log_files = []
+    summary_dir = os.path.join("logs", "summary")
+    
+    # Check new summary directory first
+    if os.path.exists(summary_dir):
+        for filename in os.listdir(summary_dir):
+            if filename.startswith("summary_") and filename.endswith(".json"):
+                try:
+                    with open(os.path.join(summary_dir, filename), "r") as f:
+                        summary = json.load(f)
+                        log_files.append(summary)
+                except (IOError, json.JSONDecodeError):
+                    continue
+    
+    # Also check old logs directory for backward compatibility
     if os.path.exists("logs"):
         for filename in os.listdir("logs"):
             if filename.startswith("summary_") and filename.endswith(".json"):
@@ -854,5 +920,8 @@ async def get_validation_types(user: dict = Depends(verify_token)):
     }
 
 if __name__ == "__main__":
+    # Migrate existing log files to new folder structure
+    migrate_log_files()
+    
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -204,14 +204,17 @@
                             <div class="col-md-4">
                                 <label class="form-label">Concurrent Requests</label>
                                 <input type="number" id="concurrentCalls" class="form-control" min="1" max="1000" value="1">
+                                <small class="form-text text-muted">Max: 1000</small>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Sequential Batches</label>
                                 <input type="number" id="sequentialBatches" class="form-control" min="1" max="100" placeholder="Optional">
+                                <small class="form-text text-muted">Max: 100</small>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Timeout (seconds)</label>
-                                <input type="number" id="timeout" class="form-control" min="1" max="300" value="30">
+                                <input type="number" id="timeout" class="form-control" min="1" max="1800" value="600">
+                                <small class="form-text text-muted">Max: 1800 sec (30 min)</small>
                             </div>
                         </div>
                         <button class="btn btn-success btn-lg w-100 mt-3" id="runTestBtn">
@@ -233,6 +236,9 @@
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span id="progressText" class="fw-bold">Running test...</span>
                                 <span id="progressStats" class="badge bg-primary">0 / 0</span>
+                            </div>
+                            <div class="d-flex justify-content-center mb-2">
+                                <span class="badge bg-secondary fs-6" id="runningClock">00:00:00</span>
                             </div>
                             <div class="progress">
                                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressFill" style="width: 0%"></div>

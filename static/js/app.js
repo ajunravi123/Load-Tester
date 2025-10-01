@@ -13,6 +13,8 @@ class LoadTestApp {
         this.currentConfigName = null;
         this.hasUnsavedChanges = false;
         this.isLoadingConfig = false;
+        this.testStartTime = null;
+        this.clockInterval = null;
         
         // Chart instances
         this.charts = {
@@ -150,7 +152,7 @@ class LoadTestApp {
             
             if (concurrentCalls) concurrentCalls.value = '1';
             if (sequentialBatches) sequentialBatches.value = '';
-            if (timeout) timeout.value = '30';
+            if (timeout) timeout.value = '600';
             if (followRedirects) followRedirects.checked = true;
             if (verifySSL) verifySSL.checked = false;
             
@@ -753,6 +755,7 @@ class LoadTestApp {
         try {
             this.setTestRunning(true);
             this.showProgress();
+            this.startClock();
             
             const response = await fetch('/api/test/start', {
                 method: 'POST',
@@ -764,9 +767,11 @@ class LoadTestApp {
             
             const result = await response.json();
             await this.loadResults(result.session_id);
+            this.stopClock();
             this.playCompletionSound();
             this.showToast('Test completed successfully', 'success');
         } catch (error) {
+            this.stopClock();
             this.showToast(`Test failed: ${error.message}`, 'danger');
             this.hideProgress();
         } finally {
@@ -794,16 +799,57 @@ class LoadTestApp {
         this.displayResults(session);
     }
     
+    startClock() {
+        this.testStartTime = Date.now();
+        const clockElement = document.getElementById('runningClock');
+        
+        // Update immediately
+        this.updateClock();
+        
+        // Update every second
+        this.clockInterval = setInterval(() => {
+            this.updateClock();
+        }, 1000);
+    }
+    
+    stopClock() {
+        if (this.clockInterval) {
+            clearInterval(this.clockInterval);
+            this.clockInterval = null;
+        }
+    }
+    
+    updateClock() {
+        if (!this.testStartTime) return;
+        
+        const elapsed = Math.floor((Date.now() - this.testStartTime) / 1000);
+        const hours = Math.floor(elapsed / 3600);
+        const minutes = Math.floor((elapsed % 3600) / 60);
+        const seconds = elapsed % 60;
+        
+        const clockElement = document.getElementById('runningClock');
+        if (clockElement) {
+            clockElement.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+    }
+    
     showProgress() {
         document.getElementById('resultsEmpty').style.display = 'none';
         document.getElementById('progressCard').style.display = 'block';
         document.getElementById('statsGrid').style.display = 'none';
         document.getElementById('chartsSection').style.display = 'none';
         document.getElementById('resultsTableContainer').style.display = 'none';
+        
+        // Reset clock display
+        const clockElement = document.getElementById('runningClock');
+        if (clockElement) {
+            clockElement.textContent = '00:00:00';
+        }
     }
     
     hideProgress() {
         document.getElementById('progressCard').style.display = 'none';
+        this.stopClock();
     }
     
     displayResults(session) {
@@ -1176,6 +1222,53 @@ class LoadTestApp {
         document.querySelectorAll('[data-body-type]').forEach(btn => {
             btn.addEventListener('click', () => this.markAsChanged());
         });
+        
+        // Enforce numeric limits on timeout, concurrent calls, and sequential batches
+        this.enforceNumericLimits();
+    }
+    
+    enforceNumericLimits() {
+        // Timeout: 1 to 1800 seconds
+        const timeoutField = document.getElementById('timeout');
+        if (timeoutField) {
+            timeoutField.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                if (value > 1800) {
+                    e.target.value = 1800;
+                    this.showToast('Maximum timeout is 1800 seconds (30 minutes)', 'warning');
+                } else if (value < 1 && e.target.value !== '') {
+                    e.target.value = 1;
+                }
+            });
+        }
+        
+        // Concurrent calls: 1 to 1000
+        const concurrentField = document.getElementById('concurrentCalls');
+        if (concurrentField) {
+            concurrentField.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                if (value > 1000) {
+                    e.target.value = 1000;
+                    this.showToast('Maximum concurrent calls is 1000', 'warning');
+                } else if (value < 1 && e.target.value !== '') {
+                    e.target.value = 1;
+                }
+            });
+        }
+        
+        // Sequential batches: 1 to 100
+        const batchesField = document.getElementById('sequentialBatches');
+        if (batchesField) {
+            batchesField.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                if (value > 100) {
+                    e.target.value = 100;
+                    this.showToast('Maximum sequential batches is 100', 'warning');
+                } else if (value < 1 && e.target.value !== '' && e.target.value !== '0') {
+                    e.target.value = 1;
+                }
+            });
+        }
     }
     
     markAsChanged() {
@@ -1436,7 +1529,7 @@ class LoadTestApp {
             document.getElementById('httpMethod').value = config.httpMethod || 'POST';
             document.getElementById('concurrentCalls').value = config.concurrentCalls || 1;
             document.getElementById('sequentialBatches').value = config.sequentialBatches || '';
-            document.getElementById('timeout').value = config.timeout || 30;
+            document.getElementById('timeout').value = config.timeout || 600;
             document.getElementById('followRedirects').checked = config.followRedirects !== false;
             document.getElementById('verifySSL').checked = config.verifySSL === true;
             document.getElementById('rawBodyInput').value = config.rawBody || '';
