@@ -15,6 +15,11 @@ class LoadTestApp {
         this.isLoadingConfig = false;
         this.testStartTime = null;
         this.clockInterval = null;
+        this.totalRequestsInTest = 0;
+        this.completedRequestsCount = 0;
+        this.realtimeResults = [];  // Store results as they come in
+        this.currentHttpMethod = 'POST';  // Track current test's method
+        this.currentSessionId = null;  // Track current test session
         
         // Chart instances
         this.charts = {
@@ -207,9 +212,11 @@ class LoadTestApp {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
         
+        console.log('Connecting to WebSocket:', wsUrl);
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
+            console.log('WebSocket connected successfully');
             const status = document.getElementById('connectionStatus');
             status.classList.add('connected');
             status.querySelector('.status-text').textContent = 'Connected';
@@ -225,6 +232,7 @@ class LoadTestApp {
         this.ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                console.log('WebSocket message received:', data.type, data);
                 this.handleWebSocketMessage(data);
             } catch (e) {
                 console.error('WebSocket error:', e);
@@ -271,6 +279,7 @@ class LoadTestApp {
         
         // Test
         document.getElementById('runTestBtn').addEventListener('click', () => this.runTest());
+        document.getElementById('cancelTestBtn').addEventListener('click', () => this.cancelTest());
         
         // Export
         document.getElementById('exportBtn').addEventListener('click', () => this.exportResults());
@@ -737,9 +746,12 @@ class LoadTestApp {
             this.bodyFields.forEach(f => { if (f.key && f.value) requestBody[f.key] = f.value; });
         }
         
+        // Store the HTTP method for display in realtime results
+        this.currentHttpMethod = document.getElementById('httpMethod').value;
+        
         const config = {
             base_url: apiUrl,
-            http_method: document.getElementById('httpMethod').value,
+            http_method: this.currentHttpMethod,
             headers,
             body_type: this.bodyType,
             request_body: requestBody,
@@ -765,29 +777,64 @@ class LoadTestApp {
             
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
+            // Note: Test completion is handled via WebSocket messages
+            // The response just confirms the test was started successfully
             const result = await response.json();
-            await this.loadResults(result.session_id);
-            this.stopClock();
-            this.playCompletionSound();
-            this.showToast('Test completed successfully', 'success');
+            
+            // Store session ID for cancellation
+            this.currentSessionId = result.session_id;
+            
         } catch (error) {
-            this.stopClock();
-            this.showToast(`Test failed: ${error.message}`, 'danger');
-            this.hideProgress();
-        } finally {
-            this.setTestRunning(false);
+            // Only handle errors if test hasn't completed via WebSocket
+            if (this.isTestRunning) {
+                this.setTestRunning(false);
+                this.stopClock();
+                this.hideProgress();
+                this.showToast(`Test failed: ${error.message}`, 'danger');
+            }
+        }
+    }
+    
+    async cancelTest() {
+        if (!this.currentSessionId) {
+            this.showToast('No active test to cancel', 'warning');
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to cancel this test?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/test/${this.currentSessionId}/cancel`, {
+                method: 'POST',
+                headers: this.getAuthHeaders()
+            });
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            this.showToast('Test cancellation requested...', 'info');
+        } catch (error) {
+            this.showToast(`Failed to cancel test: ${error.message}`, 'danger');
         }
     }
     
     setTestRunning(running) {
         this.isTestRunning = running;
-        const btn = document.getElementById('runTestBtn');
+        const runBtn = document.getElementById('runTestBtn');
+        const cancelBtn = document.getElementById('cancelTestBtn');
+        
         if (running) {
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Running...';
+            runBtn.disabled = true;
+            runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Running...';
+            runBtn.style.display = 'none';
+            cancelBtn.style.display = 'block';
         } else {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-play"></i> Run Load Test';
+            runBtn.disabled = false;
+            runBtn.innerHTML = '<i class="fas fa-play"></i> Run Load Test';
+            runBtn.style.display = 'block';
+            cancelBtn.style.display = 'none';
+            this.currentSessionId = null;  // Clear session ID
         }
     }
     
@@ -838,18 +885,151 @@ class LoadTestApp {
         document.getElementById('progressCard').style.display = 'block';
         document.getElementById('statsGrid').style.display = 'none';
         document.getElementById('chartsSection').style.display = 'none';
-        document.getElementById('resultsTableContainer').style.display = 'none';
         
         // Reset clock display
         const clockElement = document.getElementById('runningClock');
         if (clockElement) {
             clockElement.textContent = '00:00:00';
         }
+        
+        // Reset progress stats styling
+        const progressStats = document.getElementById('progressStats');
+        if (progressStats) {
+            progressStats.style.color = '';
+            progressStats.style.transform = 'scale(1)';
+        }
+        
+        // Reset progress bar
+        const progressFill = document.getElementById('progressFill');
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        
+        // Reset real-time results
+        this.realtimeResults = [];
+        
+        // Clear and prepare the results table
+        const tbody = document.getElementById('resultsTableBody');
+        if (tbody) {
+            tbody.innerHTML = '';
+        }
+        
+        // Show the results table container (but it will be empty initially)
+        document.getElementById('resultsTableContainer').style.display = 'block';
     }
     
     hideProgress() {
         document.getElementById('progressCard').style.display = 'none';
         this.stopClock();
+    }
+    
+    addRealtimeResultRow(resultData) {
+        console.log('Adding real-time result row:', resultData.request_num);
+        
+        // Store the result
+        this.realtimeResults.push(resultData);
+        
+        const tbody = document.getElementById('resultsTableBody');
+        if (!tbody) {
+            console.error('Results table body not found!');
+            return;
+        }
+        
+        const index = this.realtimeResults.length - 1;
+        const row = document.createElement('tr');
+        
+        const statusClass = resultData.status === 'success' ? 'success' : 'danger';
+        const validationClass = resultData.validation_passed ? 'success' : 'danger';
+        
+        // Add a subtle fade-in animation
+        row.style.opacity = '0';
+        row.style.transform = 'translateY(-10px)';
+        
+        row.innerHTML = `
+            <td>${resultData.request_num}</td>
+            <td><span class="badge bg-${statusClass}">${resultData.status}</span></td>
+            <td><span class="badge bg-secondary">${this.currentHttpMethod}</span></td>
+            <td>${Math.round(resultData.response_time * 1000)}ms</td>
+            <td>${resultData.status_code || 'N/A'}</td>
+            <td><span class="badge bg-${validationClass}">${resultData.validation_passed ? 'Pass' : 'Fail'}</span></td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="app.showRealtimeDetails(${index})">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </td>
+        `;
+        
+        tbody.appendChild(row);
+        
+        // Trigger fade-in animation
+        setTimeout(() => {
+            row.style.transition = 'all 0.3s ease';
+            row.style.opacity = '1';
+            row.style.transform = 'translateY(0)';
+        }, 10);
+        
+        // Scroll to the new row
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    
+    showRealtimeDetails(index) {
+        const result = this.realtimeResults[index];
+        if (!result) return;
+        
+        // Parse request body if it's a string
+        let requestBody = result.request_data;
+        try {
+            if (typeof requestBody === 'string' && requestBody) {
+                requestBody = JSON.parse(requestBody);
+            }
+        } catch (e) {
+            // Keep as-is if not valid JSON
+        }
+        
+        // Format request details
+        document.getElementById('requestDetails').textContent = JSON.stringify({
+            method: this.currentHttpMethod,
+            url: result.endpoint_url,
+            headers: result.request_headers,
+            body: requestBody
+        }, null, 2);
+        
+        // Parse response body if it's a string
+        let responseBody = result.response_data;
+        try {
+            if (typeof responseBody === 'string' && responseBody) {
+                responseBody = JSON.parse(responseBody);
+            }
+        } catch (e) {
+            // Keep as string if not valid JSON, but show it's truncated if needed
+            if (typeof responseBody === 'string' && responseBody.length >= 9900) {
+                responseBody = responseBody + '\n\n[Response truncated at 10KB for WebSocket transfer. View full response in saved logs.]';
+            }
+        }
+        
+        document.getElementById('responseDetails').textContent = JSON.stringify({
+            status: result.status_code,
+            time: result.response_time,
+            headers: result.response_headers,
+            body: responseBody,
+            error: result.error_message || null
+        }, null, 2);
+        
+        // Format validation details
+        const validationDiv = document.getElementById('validationDetails');
+        if (result.validation_results && result.validation_results.length > 0) {
+            validationDiv.innerHTML = result.validation_results.map(v => `
+                <div class="validation-detail-item ${v.passed ? 'success' : 'failed'}">
+                    <strong>${v.rule.type}:</strong> ${v.passed ? '✓ Pass' : '✗ Fail'}<br>
+                    <span class="text-muted small">${v.message}</span>
+                </div>
+            `).join('');
+        } else {
+            validationDiv.innerHTML = '<p class="text-muted">No validation rules</p>';
+        }
+        
+        const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+        modal.show();
     }
     
     displayResults(session) {
@@ -866,30 +1046,36 @@ class LoadTestApp {
         // Render charts
         this.renderCharts(session);
         
+        // The table is already populated with real-time results, so no need to re-populate it
+        // Just ensure it's visible
         document.getElementById('resultsTableContainer').style.display = 'block';
-        const tbody = document.getElementById('resultsTableBody');
-        tbody.innerHTML = '';
         
-        session.results.forEach((result, index) => {
-            const row = document.createElement('tr');
-            const statusClass = result.status === 'success' ? 'success' : 'danger';
-            const validationClass = result.validation_passed ? 'success' : 'danger';
+        // Only populate the table if we don't have real-time results (e.g., loading historical data)
+        if (this.realtimeResults.length === 0) {
+            const tbody = document.getElementById('resultsTableBody');
+            tbody.innerHTML = '';
             
-            row.innerHTML = `
-                <td>${index + 1}</td>
-                <td><span class="badge bg-${statusClass}">${result.status}</span></td>
-                <td><span class="badge bg-secondary">${session.config.http_method}</span></td>
-                <td>${Math.round(result.response_time * 1000)}ms</td>
-                <td>${result.status_code || 'N/A'}</td>
-                <td><span class="badge bg-${validationClass}">${result.validation_passed ? 'Pass' : 'Fail'}</span></td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="app.showDetails(${index})">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
+            session.results.forEach((result, index) => {
+                const row = document.createElement('tr');
+                const statusClass = result.status === 'success' ? 'success' : 'danger';
+                const validationClass = result.validation_passed ? 'success' : 'danger';
+                
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td><span class="badge bg-${statusClass}">${result.status}</span></td>
+                    <td><span class="badge bg-secondary">${session.config.http_method}</span></td>
+                    <td>${Math.round(result.response_time * 1000)}ms</td>
+                    <td>${result.status_code || 'N/A'}</td>
+                    <td><span class="badge bg-${validationClass}">${result.validation_passed ? 'Pass' : 'Fail'}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="app.showDetails(${index})">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
     }
     
     renderCharts(session) {
@@ -1096,16 +1282,17 @@ class LoadTestApp {
     showDetails(index) {
         const result = this.currentSession.results[index];
         
-        // Format request details
+        // Parse request body if it's a string
         let requestBody = result.request_data;
         try {
-            if (typeof requestBody === 'string') {
+            if (typeof requestBody === 'string' && requestBody) {
                 requestBody = JSON.parse(requestBody);
             }
         } catch (e) {
-            // Keep as string if not valid JSON
+            // Keep as-is if not valid JSON
         }
         
+        // Format request details
         document.getElementById('requestDetails').textContent = JSON.stringify({
             method: this.currentSession.config.http_method,
             url: result.endpoint_url,
@@ -1113,22 +1300,37 @@ class LoadTestApp {
             body: requestBody
         }, null, 2);
         
-        // Format response details with parsed body
+        // Parse response body if it's a string
         let responseBody = result.response_data;
+        let wasTruncated = false;
+        
         try {
             if (typeof responseBody === 'string' && responseBody) {
+                // Check if it might be truncated
+                if (responseBody.length > 5000) {
+                    wasTruncated = true;
+                }
                 responseBody = JSON.parse(responseBody);
             }
         } catch (e) {
             // Keep as string if not valid JSON
-            responseBody = result.response_data ? result.response_data.substring(0, 3000) : 'No data';
+            if (typeof responseBody === 'string' && responseBody) {
+                // For very long non-JSON responses, show a preview
+                if (responseBody.length > 10000) {
+                    responseBody = responseBody.substring(0, 10000) + '\n\n[Response truncated. Full response available in saved logs.]';
+                    wasTruncated = true;
+                }
+            } else {
+                responseBody = 'No data';
+            }
         }
         
         document.getElementById('responseDetails').textContent = JSON.stringify({
             status: result.status_code,
             time: result.response_time,
             headers: result.response_headers,
-            body: responseBody
+            body: responseBody,
+            ...(wasTruncated && { note: 'Response may be truncated. Check saved log files for complete response.' })
         }, null, 2);
         
         const validationDiv = document.getElementById('validationDetails');
@@ -1151,14 +1353,79 @@ class LoadTestApp {
         if (data.type === 'test_started') {
             document.getElementById('progressText').textContent = `Running ${data.total_requests} requests...`;
             document.getElementById('progressStats').textContent = `0 / ${data.total_requests}`;
+            // Store total for accurate progress tracking
+            this.totalRequestsInTest = data.total_requests;
+            this.completedRequestsCount = 0;
+            
+            // Ensure progress card is visible
+            const progressCard = document.getElementById('progressCard');
+            if (progressCard) {
+                progressCard.style.display = 'block';
+            }
         } else if (data.type === 'request_completed') {
-            const total = this.getTotalRequests();
-            const progress = (data.request_num / total) * 100;
-            document.getElementById('progressFill').style.width = `${progress}%`;
-            document.getElementById('progressStats').textContent = `${data.request_num} / ${total}`;
+            console.log('Processing request_completed:', data.request_num);
+            
+            // Increment completed count
+            this.completedRequestsCount++;
+            
+            // Use the total from test_started message for accuracy
+            const total = this.totalRequestsInTest || this.getTotalRequests();
+            const progress = (this.completedRequestsCount / total) * 100;
+            
+            // Update progress bar
+            const progressFill = document.getElementById('progressFill');
+            if (progressFill) {
+                progressFill.style.width = `${progress}%`;
+            }
+            
+            // Update counter with visual feedback
+            const progressStats = document.getElementById('progressStats');
+            if (progressStats) {
+                progressStats.textContent = `${this.completedRequestsCount} / ${total}`;
+                
+                // Add a flash effect to make the update more visible
+                progressStats.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    progressStats.style.transform = 'scale(1)';
+                }, 200);
+                
+                // Color code based on status
+                if (data.status === 'error') {
+                    progressStats.style.color = '#dc3545';
+                } else if (data.validation_passed === false) {
+                    progressStats.style.color = '#ffc107';
+                } else {
+                    progressStats.style.color = '#198754';
+                }
+            }
+            
+            // Add the result row to the table in real-time
+            console.log('About to add real-time row...');
+            this.addRealtimeResultRow(data);
+            console.log('Real-time row added');
         } else if (data.type === 'test_completed') {
+            // Stop the button spinner immediately
+            this.setTestRunning(false);
+            this.stopClock();
+            
+            // Load and display results
             this.loadResults(data.session_id);
             this.playCompletionSound();
+            this.showToast('Test completed successfully', 'success');
+        } else if (data.type === 'test_cancelled') {
+            // Stop the button spinner on cancellation
+            this.setTestRunning(false);
+            this.stopClock();
+            
+            // Load and display partial results
+            this.loadResults(data.session_id);
+            this.showToast(`Test cancelled. ${data.completed_requests || 0} requests completed.`, 'warning');
+        } else if (data.type === 'test_failed') {
+            // Stop the button spinner on failure
+            this.setTestRunning(false);
+            this.stopClock();
+            this.hideProgress();
+            this.showToast(`Test failed: ${data.error || 'Unknown error'}`, 'danger');
         }
     }
     

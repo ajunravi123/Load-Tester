@@ -10,7 +10,7 @@ from datetime import datetime
 import ssl
 from enum import Enum
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Response, Depends
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Response, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -108,10 +108,18 @@ class ConnectionManager:
         await websocket.send_text(message)
 
     async def broadcast(self, message: str):
+        # Log broadcast for debugging
+        try:
+            msg_data = json.loads(message)
+            print(f"Broadcasting: {msg_data.get('type')} to {len(self.active_connections)} clients")
+        except:
+            pass
+        
         for connection in self.active_connections:
             try:
                 await connection.send_text(message)
-            except Exception:
+            except Exception as e:
+                print(f"Error sending to client: {e}")
                 # Remove disconnected connections
                 self.active_connections.remove(connection)
 
@@ -125,10 +133,15 @@ class EnhancedLoadTester:
         self.log_directory = "logs"
         self.load_test_directory = os.path.join(self.log_directory, "load_test")
         self.summary_directory = os.path.join(self.log_directory, "summary")
+        self.is_cancelled = False  # Flag to track cancellation
         
         # Create directories if they don't exist
         os.makedirs(self.load_test_directory, exist_ok=True)
         os.makedirs(self.summary_directory, exist_ok=True)
+    
+    def cancel(self):
+        """Cancel the running test"""
+        self.is_cancelled = True
         
     def _get_headers(self) -> Dict[str, str]:
         """Generate request headers from config"""
@@ -323,15 +336,23 @@ class EnhancedLoadTester:
                     validation_passed=validation_passed
                 )
                 
-                # Send real-time update via WebSocket
+                # Send real-time update via WebSocket with complete result data
                 if websocket_manager:
                     await websocket_manager.broadcast(json.dumps({
                         "type": "request_completed",
                         "request_num": request_num + 1,
                         "status": final_status,
                         "response_time": response_time,
-                        "validation_passed": validation_passed
-                    }))
+                        "status_code": response.status,
+                        "validation_passed": validation_passed,
+                        "validation_results": validation_results,
+                        "error_message": None,
+                        "request_data": request_data,
+                        "response_data": full_response[:10000] if full_response else None,  # Limit size for WebSocket (10KB)
+                        "request_headers": request_headers,
+                        "response_headers": response_headers,
+                        "endpoint_url": self.endpoint
+                    }, default=str))  # Handle datetime serialization
                 
                 return result
                 
@@ -349,14 +370,23 @@ class EnhancedLoadTester:
                 validation_passed=False
             )
             
-            # Send error update via WebSocket
+            # Send error update via WebSocket with complete result data
             if websocket_manager:
                 await websocket_manager.broadcast(json.dumps({
-                    "type": "request_error",
+                    "type": "request_completed",  # Use same type for consistency
                     "request_num": request_num + 1,
-                    "error": str(e),
-                    "response_time": response_time
-                }))
+                    "status": "error",
+                    "response_time": response_time,
+                    "status_code": None,
+                    "validation_passed": False,
+                    "validation_results": [],
+                    "error_message": str(e),
+                    "request_data": request_data,
+                    "response_data": None,
+                    "request_headers": request_headers,
+                    "response_headers": None,
+                    "endpoint_url": self.endpoint
+                }, default=str))
             
             return result
     
@@ -394,6 +424,10 @@ class EnhancedLoadTester:
                 if self.config.sequential_batches:
                     # Run multiple sequential batches
                     for batch_num in range(self.config.sequential_batches):
+                        # Check for cancellation before each batch
+                        if self.is_cancelled:
+                            break
+                        
                         if websocket_manager:
                             await websocket_manager.broadcast(json.dumps({
                                 "type": "batch_started",
@@ -438,16 +472,24 @@ class EnhancedLoadTester:
             
             test_session.results = all_results
             test_session.stats = stats
-            test_session.status = "completed"
+            test_session.status = "cancelled" if self.is_cancelled else "completed"
             test_session.end_time = datetime.now()
             
-            # Send completion notification
+            # Send completion/cancellation notification
             if websocket_manager:
-                await websocket_manager.broadcast(json.dumps({
-                    "type": "test_completed",
-                    "session_id": self.session_id,
-                    "stats": stats
-                }))
+                if self.is_cancelled:
+                    await websocket_manager.broadcast(json.dumps({
+                        "type": "test_cancelled",
+                        "session_id": self.session_id,
+                        "stats": stats,
+                        "completed_requests": len(all_results)
+                    }))
+                else:
+                    await websocket_manager.broadcast(json.dumps({
+                        "type": "test_completed",
+                        "session_id": self.session_id,
+                        "stats": stats
+                    }))
             
             # Save results to file
             self._save_results(test_session)
@@ -599,6 +641,9 @@ manager = ConnectionManager()
 # Store active test sessions
 active_sessions: Dict[str, TestSession] = {}
 
+# Store active test runners for cancellation
+active_testers: Dict[str, EnhancedLoadTester] = {}
+
 # Startup event to migrate existing log files
 @app.on_event("startup")
 async def startup_event():
@@ -650,23 +695,55 @@ async def read_root(request: Request):
     except:
         return RedirectResponse(url="/login", status_code=303)
 
+async def run_test_background(tester: EnhancedLoadTester):
+    """Background task to run the load test"""
+    try:
+        test_session = await tester.run_load_test(manager)
+        active_sessions[test_session.session_id] = test_session
+    except Exception as e:
+        print(f"Background test error: {str(e)}")
+    finally:
+        # Clean up tester after completion
+        if tester.session_id in active_testers:
+            del active_testers[tester.session_id]
+
 @app.post("/api/test/start")
-async def start_load_test(config: LoadTestConfig, user: dict = Depends(verify_token)):
+async def start_load_test(config: LoadTestConfig, background_tasks: BackgroundTasks, user: dict = Depends(verify_token)):
     """Start a new load test"""
     try:
         tester = EnhancedLoadTester(config)
         
-        # Run test in background
-        test_session = await tester.run_load_test(manager)
-        active_sessions[test_session.session_id] = test_session
+        # Store tester for cancellation capability
+        active_testers[tester.session_id] = tester
+        
+        # Run test in background (non-blocking)
+        background_tasks.add_task(run_test_background, tester)
         
         return {
-            "session_id": test_session.session_id,
-            "status": test_session.status,
-            "message": "Load test completed successfully"
+            "session_id": tester.session_id,
+            "status": "started",
+            "message": "Load test started successfully"
         }
     except Exception as e:
+        # Clean up on error
+        if 'tester' in locals() and tester.session_id in active_testers:
+            del active_testers[tester.session_id]
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/test/{session_id}/cancel")
+async def cancel_load_test(session_id: str, user: dict = Depends(verify_token)):
+    """Cancel a running load test"""
+    if session_id not in active_testers:
+        raise HTTPException(status_code=404, detail="Test session not found or already completed")
+    
+    tester = active_testers[session_id]
+    tester.cancel()
+    
+    return {
+        "session_id": session_id,
+        "status": "cancelling",
+        "message": "Test cancellation requested"
+    }
 
 @app.get("/api/test/{session_id}")
 async def get_test_results(session_id: str, user: dict = Depends(verify_token)):

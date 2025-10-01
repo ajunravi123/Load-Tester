@@ -330,6 +330,20 @@ body {
 }
 
 /* Progress Bar */
+#progressStats {
+    transition: transform 0.2s ease, color 0.3s ease;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+#progressFill {
+    transition: width 0.3s ease;
+}
+
+.progress {
+    position: relative;
+}
+
 [data-theme="dark"] .alert-info {
     background: #084298;
     border-color: #0a58ca;

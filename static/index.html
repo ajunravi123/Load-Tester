@@ -217,9 +217,14 @@
                                 <small class="form-text text-muted">Max: 1800 sec (30 min)</small>
                             </div>
                         </div>
-                        <button class="btn btn-success btn-lg w-100 mt-3" id="runTestBtn">
-                            <i class="fas fa-play"></i> Run Load Test
-                        </button>
+                        <div class="d-grid gap-2 mt-3">
+                            <button class="btn btn-success btn-lg" id="runTestBtn">
+                                <i class="fas fa-play"></i> Run Load Test
+                            </button>
+                            <button class="btn btn-danger btn-lg" id="cancelTestBtn" style="display: none;">
+                                <i class="fas fa-stop"></i> Cancel Test
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
