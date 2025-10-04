@@ -245,6 +245,7 @@ class AdminApp {
         
         // Reset form
         document.getElementById('userEditMode').value = editMode ? 'edit' : 'create';
+        document.getElementById('userEditUsername').value = '';
         document.getElementById('userUsername').value = '';
         document.getElementById('userName').value = '';
         document.getElementById('userEmail').value = '';
@@ -307,7 +308,10 @@ class AdminApp {
                 return;
             }
             
-            // Populate form
+            // Show modal first (which resets the form)
+            this.showUserModal(true);
+            
+            // Then populate form with user data
             document.getElementById('userEditMode').value = 'edit';
             document.getElementById('userEditUsername').value = user.username;
             document.getElementById('userUsername').value = user.username;
@@ -321,8 +325,6 @@ class AdminApp {
             if (this.isSuperAdmin) {
                 document.getElementById('userTenant').value = user.tenant_id || '';
             }
-            
-            this.showUserModal(true);
         } catch (error) {
             console.error('Error loading user:', error);
             this.showToast('Failed to load user data', 'danger');
@@ -346,6 +348,14 @@ class AdminApp {
         
         if (!editMode && !password) {
             this.showToast('Password is required for new users', 'warning');
+            return;
+        }
+        
+        // Validate username in edit mode
+        const editUsername = document.getElementById('userEditUsername').value;
+        if (editMode && !editUsername) {
+            this.showToast('Username is missing. Please try again.', 'danger');
+            console.error('Edit mode but username is missing');
             return;
         }
         
@@ -380,7 +390,7 @@ class AdminApp {
             }
             
             const url = editMode 
-                ? `/api/admin/users/${document.getElementById('userEditUsername').value}`
+                ? `/api/admin/users/${editUsername}`
                 : '/api/admin/users';
             
             const method = editMode ? 'PUT' : 'POST';
@@ -500,14 +510,16 @@ class AdminApp {
                 return;
             }
             
+            // Show modal first (which resets the form)
+            this.showTenantModal(true);
+            
+            // Then populate with tenant data
             document.getElementById('tenantEditMode').value = 'edit';
             document.getElementById('tenantEditId').value = tenant.id;
             document.getElementById('tenantName').value = tenant.name;
             document.getElementById('tenantEmail').value = tenant.contact_email || '';
             document.getElementById('tenantMaxUsers').value = tenant.max_users;
             document.getElementById('tenantStatus').value = tenant.status;
-            
-            this.showTenantModal(true);
         } catch (error) {
             console.error('Error loading tenant:', error);
             this.showToast('Failed to load tenant data', 'danger');
@@ -526,6 +538,14 @@ class AdminApp {
             return;
         }
         
+        // Validate tenant ID in edit mode
+        const tenantId = document.getElementById('tenantEditId').value;
+        if (editMode && !tenantId) {
+            this.showToast('Tenant ID is missing. Please try again.', 'danger');
+            console.error('Edit mode but tenant ID is missing');
+            return;
+        }
+        
         try {
             const tenantData = {
                 name,
@@ -535,7 +555,7 @@ class AdminApp {
             };
             
             const url = editMode 
-                ? `/api/admin/tenants/${document.getElementById('tenantEditId').value}`
+                ? `/api/admin/tenants/${tenantId}`
                 : '/api/admin/tenants';
             
             const method = editMode ? 'PUT' : 'POST';
