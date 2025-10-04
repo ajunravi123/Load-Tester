@@ -206,8 +206,15 @@ class AdminApp {
             
             tbody.innerHTML = users.map(user => {
                 // Show tenant column for super admin
-                const tenantCell = this.isSuperAdmin ? 
-                    `<td><span class="badge bg-info">${this.escapeHtml(this.getTenantName(user.tenant_id))}</span></td>` : '';
+                let tenantCell = '';
+                if (this.isSuperAdmin) {
+                    // Support both single tenant_id and multiple tenant_ids
+                    const userTenants = user.tenant_ids || (user.tenant_id ? [user.tenant_id] : []);
+                    const tenantBadges = userTenants.map(tenantId => 
+                        `<span class="badge bg-info me-1 mb-1">${this.escapeHtml(this.getTenantName(tenantId))}</span>`
+                    ).join('');
+                    tenantCell = `<td>${tenantBadges || '<span class="text-muted">None</span>'}</td>`;
+                }
                 
                 // Show role badge with different colors
                 let roleBadge = 'secondary';
@@ -240,7 +247,7 @@ class AdminApp {
         }
     }
     
-    showUserModal(editMode = false) {
+    async showUserModal(editMode = false) {
         const modal = new bootstrap.Modal(document.getElementById('userModal'));
         
         // Reset form
@@ -267,6 +274,9 @@ class AdminApp {
         if (this.isSuperAdmin) {
             // Show tenant selector
             tenantSelectGroup.style.display = 'block';
+            
+            // Fetch latest tenants dynamically
+            await this.loadTenantsList();
             this.populateTenantSelector();
             
             // Show super admin role option
@@ -283,17 +293,22 @@ class AdminApp {
     }
     
     populateTenantSelector() {
-        const select = document.getElementById('userTenant');
+        const container = document.getElementById('userTenantsContainer');
         
         if (this.tenants.length === 0) {
-            select.innerHTML = '<option value="">No tenants available</option>';
+            container.innerHTML = '<p class="text-muted">No tenants available</p>';
             return;
         }
         
-        select.innerHTML = '<option value="">Select Tenant</option>' +
-            this.tenants.map(tenant => 
-                `<option value="${tenant.id}">${this.escapeHtml(tenant.name)}</option>`
-            ).join('');
+        container.innerHTML = this.tenants.map(tenant => `
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="${tenant.id}" 
+                    id="tenant_${tenant.id}" name="userTenants">
+                <label class="form-check-label" for="tenant_${tenant.id}">
+                    ${this.escapeHtml(tenant.name)}
+                </label>
+            </div>
+        `).join('');
     }
     
     async editUser(username) {
@@ -308,8 +323,8 @@ class AdminApp {
                 return;
             }
             
-            // Show modal first (which resets the form)
-            this.showUserModal(true);
+            // Show modal first (which resets the form and fetches latest tenants)
+            await this.showUserModal(true);
             
             // Then populate form with user data
             document.getElementById('userEditMode').value = 'edit';
@@ -321,9 +336,23 @@ class AdminApp {
             document.getElementById('userRole').value = user.role || 'user';
             document.getElementById('userStatus').value = user.status || 'active';
             
-            // Set tenant if super admin
+            // Set tenants if super admin
             if (this.isSuperAdmin) {
-                document.getElementById('userTenant').value = user.tenant_id || '';
+                // Support both single tenant_id and multiple tenant_ids
+                const userTenants = user.tenant_ids || (user.tenant_id ? [user.tenant_id] : []);
+                
+                // Uncheck all checkboxes first
+                document.querySelectorAll('input[name="userTenants"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                
+                // Check the user's tenants
+                userTenants.forEach(tenantId => {
+                    const checkbox = document.getElementById(`tenant_${tenantId}`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                    }
+                });
             }
         } catch (error) {
             console.error('Error loading user:', error);
@@ -360,11 +389,14 @@ class AdminApp {
         }
         
         // Validate tenant selection for super admin
-        let tenantId = null;
+        let tenantIds = [];
         if (this.isSuperAdmin) {
-            tenantId = document.getElementById('userTenant').value;
-            if (!tenantId && !editMode) {
-                this.showToast('Please select a tenant', 'warning');
+            // Get selected tenants from checkboxes
+            const selectedCheckboxes = document.querySelectorAll('input[name="userTenants"]:checked');
+            tenantIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            if (tenantIds.length === 0) {
+                this.showToast('Please select at least one tenant', 'warning');
                 return;
             }
         }
@@ -377,9 +409,9 @@ class AdminApp {
                 status
             };
             
-            // Add tenant_id for super admin
-            if (this.isSuperAdmin && tenantId) {
-                userData.tenant_id = tenantId;
+            // Add tenant_ids for super admin (multiple tenants)
+            if (this.isSuperAdmin && tenantIds.length > 0) {
+                userData.tenant_ids = tenantIds;
             }
             
             if (!editMode) {
@@ -483,8 +515,13 @@ class AdminApp {
         }
     }
     
-    showTenantModal(editMode = false) {
+    async showTenantModal(editMode = false) {
         const modal = new bootstrap.Modal(document.getElementById('tenantModal'));
+        
+        // Refresh tenant list for display purposes (in case referenced elsewhere)
+        if (!editMode) {
+            await this.loadTenantsList();
+        }
         
         // Reset form
         document.getElementById('tenantEditMode').value = editMode ? 'edit' : 'create';
@@ -511,7 +548,7 @@ class AdminApp {
             }
             
             // Show modal first (which resets the form)
-            this.showTenantModal(true);
+            await this.showTenantModal(true);
             
             // Then populate with tenant data
             document.getElementById('tenantEditMode').value = 'edit';

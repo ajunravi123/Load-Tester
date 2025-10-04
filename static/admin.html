@@ -245,11 +245,11 @@
                     </div>
                     
                     <div class="mb-3" id="tenantSelectGroup" style="display: none;">
-                        <label for="userTenant" class="form-label">Tenant *</label>
-                        <select class="form-select" id="userTenant">
-                            <option value="">Loading...</option>
-                        </select>
-                        <small class="text-muted">Select the tenant this user belongs to</small>
+                        <label class="form-label">Tenants *</label>
+                        <div id="userTenantsContainer" class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                            <p class="text-muted">Loading tenants...</p>
+                        </div>
+                        <small class="text-muted">Select one or more tenants this user can access</small>
                     </div>
                     
                     <div class="mb-3">

@@ -653,16 +653,19 @@ async def authenticate_user(username: str, password: str, tenant_id: str = None)
     
     for user in users:
         if user['username'] == username and user['password'] == password and user.get('status') == 'active':
-            matching_users.append(user)
+            # Support both tenant_id and tenant_ids
+            user_tenant_ids = user.get('tenant_ids', [])
+            if not user_tenant_ids and user.get('tenant_id'):
+                user_tenant_ids = [user.get('tenant_id')]
+            
+            # If tenant_id specified, check if user has access to it
+            if tenant_id:
+                if tenant_id in user_tenant_ids or user.get('tenant_id') == tenant_id:
+                    return user
+            else:
+                matching_users.append(user)
     
-    # If tenant_id specified, return specific tenant user
-    if tenant_id:
-        for user in matching_users:
-            if user.get('tenant_id') == tenant_id:
-                return user
-        return None
-    
-    # If only one match, return it
+    # If only one match and no tenant_id specified, return it
     if len(matching_users) == 1:
         return matching_users[0]
     
@@ -739,6 +742,10 @@ async def login_page():
     content = await async_read_text("static/login.html")
     return HTMLResponse(content=content)
 
+class ConfigListRequest(BaseModel):
+    """Request model for listing configs by tenant"""
+    tenant_id: Optional[str] = None
+
 class LoginWithTenantRequest(BaseModel):
     """Login request with optional tenant selection"""
     username: str
@@ -759,7 +766,38 @@ async def login(login_request: LoginWithTenantRequest):
         tenants_info = []
         tenants = await load_tenants()
         for user in result:
-            tenant_id = user.get('tenant_id')
+            # Support both tenant_id and tenant_ids
+            user_tenant_ids = user.get('tenant_ids', [])
+            if not user_tenant_ids and user.get('tenant_id'):
+                user_tenant_ids = [user.get('tenant_id')]
+            
+            for tenant_id in user_tenant_ids:
+                tenant = next((t for t in tenants if t['id'] == tenant_id), None)
+                tenants_info.append({
+                    "tenant_id": tenant_id,
+                    "tenant_name": tenant['name'] if tenant else tenant_id,
+                    "role": user.get('role', 'user')
+                })
+        
+        return {
+            "multiple_tenants": True,
+            "tenants": tenants_info
+        }
+    
+    # Single user found
+    user = result
+    
+    # Support both tenant_id and tenant_ids
+    user_tenant_ids = user.get('tenant_ids', [])
+    if not user_tenant_ids and user.get('tenant_id'):
+        user_tenant_ids = [user.get('tenant_id')]
+    
+    # If user has multiple tenants AND no specific tenant was requested, return tenant selection
+    if len(user_tenant_ids) > 1 and not login_request.tenant_id:
+        # Return tenant selection
+        tenants = await load_tenants()
+        tenants_info = []
+        for tenant_id in user_tenant_ids:
             tenant = next((t for t in tenants if t['id'] == tenant_id), None)
             tenants_info.append({
                 "tenant_id": tenant_id,
@@ -772,17 +810,18 @@ async def login(login_request: LoginWithTenantRequest):
             "tenants": tenants_info
         }
     
-    # Single user found
-    user = result
-    
-    # Get tenant name
-    tenant = await get_tenant_by_id(user.get('tenant_id'))
+    # Use the requested tenant_id if provided, otherwise use first available or None
+    if login_request.tenant_id:
+        tenant_id = login_request.tenant_id
+    else:
+        tenant_id = user_tenant_ids[0] if user_tenant_ids else None
+    tenant = await get_tenant_by_id(tenant_id) if tenant_id else None
     tenant_name = tenant['name'] if tenant else 'Unknown'
     
     token = create_token(
         user['username'], 
         user['name'],
-        user.get('tenant_id'),
+        tenant_id,
         user.get('role', 'user')
     )
     return {
@@ -791,7 +830,7 @@ async def login(login_request: LoginWithTenantRequest):
         "username": user['username'],
         "name": user['name'],
         "role": user.get('role', 'user'),
-        "tenant_id": user.get('tenant_id'),
+        "tenant_id": tenant_id,
         "tenant_name": tenant_name,
         "expires_in": JWT_EXPIRATION_DAYS * 24 * 60 * 60  # seconds
     }
@@ -803,28 +842,50 @@ async def logout(user: dict = Depends(verify_token)):
 
 @app.get("/api/user/tenants")
 async def get_user_tenants(user: dict = Depends(verify_token)):
-    """Get all tenants available for the current user"""
+    """Get all tenants available for the current user - super_admin gets all tenants"""
     username = user.get('username')
     current_tenant_id = user.get('tenant_id')
     
-    # Find all accounts for this username
+    # Load all tenants
+    tenants = await load_tenants()
+    
+    # Super admin gets all tenants
+    if is_super_admin(user):
+        available_tenants = []
+        for tenant in tenants:
+            available_tenants.append({
+                "tenant_id": tenant['id'],
+                "tenant_name": tenant['name'],
+                "role": "super_admin",
+                "is_current": tenant['id'] == current_tenant_id
+            })
+        
+        return {
+            "tenants": available_tenants,
+            "current_tenant_id": current_tenant_id
+        }
+    
+    # Regular users - find their assigned tenants
     users = await load_users()
     user_accounts = [u for u in users if u['username'] == username and u.get('status') == 'active']
     
-    # Get tenant info for each account
-    tenants = await load_tenants()
     available_tenants = []
     
     for user_account in user_accounts:
-        tenant_id = user_account.get('tenant_id')
-        tenant = next((t for t in tenants if t['id'] == tenant_id), None)
+        # Support both tenant_id and tenant_ids
+        user_tenant_ids = user_account.get('tenant_ids', [])
+        if not user_tenant_ids and user_account.get('tenant_id'):
+            user_tenant_ids = [user_account.get('tenant_id')]
         
-        available_tenants.append({
-            "tenant_id": tenant_id,
-            "tenant_name": tenant['name'] if tenant else tenant_id or 'Unknown',
-            "role": user_account.get('role', 'user'),
-            "is_current": tenant_id == current_tenant_id
-        })
+        for tenant_id in user_tenant_ids:
+            tenant = next((t for t in tenants if t['id'] == tenant_id), None)
+            
+            available_tenants.append({
+                "tenant_id": tenant_id,
+                "tenant_name": tenant['name'] if tenant else tenant_id or 'Unknown',
+                "role": user_account.get('role', 'user'),
+                "is_current": tenant_id == current_tenant_id
+            })
     
     return {
         "tenants": available_tenants,
@@ -833,23 +894,59 @@ async def get_user_tenants(user: dict = Depends(verify_token)):
 
 @app.post("/api/user/switch-tenant")
 async def switch_tenant(request: Dict[str, str], user: dict = Depends(verify_token)):
-    """Switch to a different tenant without re-authentication"""
+    """Switch to a different tenant without re-authentication - super_admin can switch to any tenant"""
     target_tenant_id = request.get('tenant_id')
     username = user.get('username')
     
     if not target_tenant_id:
         raise HTTPException(status_code=400, detail="Tenant ID is required")
     
-    # Find all accounts for this username
+    # Super admin can switch to any tenant
+    if is_super_admin(user):
+        # Verify tenant exists
+        tenants = await load_tenants()
+        tenant_exists = any(t['id'] == target_tenant_id for t in tenants)
+        
+        if not tenant_exists:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Get tenant name
+        tenant = await get_tenant_by_id(target_tenant_id)
+        tenant_name = tenant['name'] if tenant else 'Unknown'
+        
+        # Create new token for super admin with target tenant
+        new_token = create_token(
+            username,
+            user.get('name'),
+            target_tenant_id,
+            'super_admin'
+        )
+        
+        return {
+            "access_token": new_token,
+            "token_type": "bearer",
+            "username": username,
+            "name": user.get('name'),
+            "role": 'super_admin',
+            "tenant_id": target_tenant_id,
+            "tenant_name": tenant_name,
+            "expires_in": JWT_EXPIRATION_DAYS * 24 * 60 * 60
+        }
+    
+    # Regular users - find their accounts
     users = await load_users()
     target_user = None
     
     for u in users:
-        if (u['username'] == username and 
-            u.get('tenant_id') == target_tenant_id and 
-            u.get('status') == 'active'):
-            target_user = u
-            break
+        if u['username'] == username and u.get('status') == 'active':
+            # Support both tenant_id and tenant_ids
+            user_tenant_ids = u.get('tenant_ids', [])
+            if not user_tenant_ids and u.get('tenant_id'):
+                user_tenant_ids = [u.get('tenant_id')]
+            
+            if target_tenant_id in user_tenant_ids:
+                target_user = u
+                break
     
     if not target_user:
         raise HTTPException(
@@ -994,9 +1091,37 @@ async def save_config(config: Dict[str, Any], user: dict = Depends(verify_token)
         config_dir = "configs"
         os.makedirs(config_dir, exist_ok=True)
         
-        # Add tenant_id to config
-        config["tenant_id"] = user.get("tenant_id")
+        # Use tenant_id from request if provided, otherwise use user's tenant_id
+        # This allows super admin to save configs for specific tenants
+        if "tenant_id" not in config or config["tenant_id"] is None:
+            config["tenant_id"] = user.get("tenant_id")
+        
+        # Validate: Check if user has access to the tenant they're trying to save to
+        is_super = is_super_admin(user)
+        if not is_super:
+            # Get user's available tenants
+            username = user.get('username')
+            users = await load_users()
+            user_accounts = [u for u in users if u['username'] == username and u.get('status') == 'active']
+            
+            # Collect all tenant IDs the user has access to
+            user_tenant_ids = []
+            for user_account in user_accounts:
+                tenant_ids = user_account.get('tenant_ids', [])
+                if not tenant_ids and user_account.get('tenant_id'):
+                    tenant_ids = [user_account.get('tenant_id')]
+                user_tenant_ids.extend(tenant_ids)
+            
+            # Check if config tenant_id is in user's available tenants
+            if config["tenant_id"] not in user_tenant_ids:
+                raise HTTPException(
+                    status_code=403, 
+                    detail=f"You don't have access to save configs for this tenant. Your available tenants: {user_tenant_ids}"
+                )
+        
         config["created_by"] = user.get("username")
+        
+        print(f"[CONFIG SAVE] User: {user.get('username')}, Saving config with tenant_id: {config['tenant_id']}")
         
         config_id = config.get("id")
         config_name = config.get("name", f"config_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
@@ -1062,9 +1187,14 @@ async def save_config(config: Dict[str, Any], user: dict = Depends(verify_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save config: {str(e)}")
 
-@app.get("/api/config/list")
-async def list_configs(user: dict = Depends(verify_token)):
-    """List all saved configurations for current tenant (async)"""
+@app.post("/api/config/list")
+async def list_configs(request: ConfigListRequest, response: Response, user: dict = Depends(verify_token)):
+    """List saved configurations filtered by tenant_id from request body (async)"""
+    # Set no-cache headers to prevent stale data after tenant switch
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     try:
         config_dir = "configs"
         if not os.path.exists(config_dir):
@@ -1072,6 +1202,33 @@ async def list_configs(user: dict = Depends(verify_token)):
         
         configs = []
         user_tenant_id = user.get("tenant_id")
+        user_role = user.get("role")
+        is_super = is_super_admin(user)
+        
+        # Use tenant_id from request body, fallback to user's tenant from token
+        # Handle None/null values explicitly
+        filter_tenant_id = request.tenant_id if request.tenant_id is not None else user_tenant_id
+        
+        print(f"[CONFIG LIST] User: {user.get('username')}, Role: {user_role}, Is Super: {is_super}, User Tenant: {user_tenant_id}, Filter Tenant: {filter_tenant_id}, Request Tenant: {request.tenant_id}")
+        
+        # Load tenant names for super admin display
+        tenants = await load_tenants() if is_super else []
+        tenant_map = {t['id']: t['name'] for t in tenants}
+        
+        # For regular users, get their available tenant IDs
+        user_tenant_ids = []
+        if not is_super:
+            username = user.get('username')
+            users = await load_users()
+            user_accounts = [u for u in users if u['username'] == username and u.get('status') == 'active']
+            
+            for user_account in user_accounts:
+                tenant_ids = user_account.get('tenant_ids', [])
+                if not tenant_ids and user_account.get('tenant_id'):
+                    tenant_ids = [user_account.get('tenant_id')]
+                user_tenant_ids.extend(tenant_ids)
+            
+            print(f"[CONFIG LIST] Regular user available tenants: {user_tenant_ids}")
         
         filenames = await async_listdir(config_dir)
         for filename in filenames:
@@ -1080,31 +1237,73 @@ async def list_configs(user: dict = Depends(verify_token)):
                     filepath = os.path.join(config_dir, filename)
                     config = await async_read_json(filepath)
                     if config:
-                        # Filter by tenant
-                        if config.get("tenant_id") == user_tenant_id:
-                            configs.append({
-                                "id": config.get("id", filename),
-                                "name": config.get("name", filename.replace('.json', '')),
-                                "saved_at": config.get("saved_at", ""),
-                                "filename": filename,
-                                "created_by": config.get("created_by", "")
-                            })
+                        config_tenant_id = config.get("tenant_id")
+                        
+                        # Filter by the selected tenant_id from request
+                        # Super admin can see all tenants, regular users can only see their own tenant
+                        if is_super:
+                            # Super admin: filter by requested tenant_id (including null/no tenant)
+                            if config_tenant_id == filter_tenant_id:
+                                config_item = {
+                                    "id": config.get("id", filename),
+                                    "name": config.get("name", filename.replace('.json', '')),
+                                    "saved_at": config.get("saved_at", ""),
+                                    "filename": filename,
+                                    "created_by": config.get("created_by", ""),
+                                    "tenant_id": config_tenant_id
+                                }
+                                config_item["tenant_name"] = tenant_map.get(config_tenant_id, config_tenant_id or 'No Tenant')
+                                configs.append(config_item)
+                        else:
+                            # Regular users: can only see configs for tenants they have access to
+                            # Check if the filter_tenant_id is in user's available tenants
+                            # AND the config matches the filter_tenant_id
+                            if filter_tenant_id in user_tenant_ids and config_tenant_id == filter_tenant_id:
+                                config_item = {
+                                    "id": config.get("id", filename),
+                                    "name": config.get("name", filename.replace('.json', '')),
+                                    "saved_at": config.get("saved_at", ""),
+                                    "filename": filename,
+                                    "created_by": config.get("created_by", ""),
+                                    "tenant_id": config_tenant_id
+                                }
+                                configs.append(config_item)
                 except Exception as e:
                     print(f"Error reading {filename}: {e}")
                     continue
         
         # Sort by saved_at descending
         configs.sort(key=lambda x: x.get("saved_at", ""), reverse=True)
+        
+        print(f"[CONFIG LIST] Returning {len(configs)} configs for tenant {filter_tenant_id}")
+        
         return {"configs": configs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list configs: {str(e)}")
 
 @app.get("/api/config/{config_id}")
-async def get_config(config_id: str, user: dict = Depends(verify_token)):
-    """Get a specific configuration (tenant-specific, async)"""
+async def get_config(config_id: str, response: Response, user: dict = Depends(verify_token)):
+    """Get a specific configuration - super_admin can access any tenant's config (async)"""
+    # Set no-cache headers
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    
     try:
         config_dir = "configs"
-        user_tenant_id = user.get("tenant_id")
+        is_super = is_super_admin(user)
+        
+        # Get user's available tenant IDs
+        user_tenant_ids = []
+        if not is_super:
+            username = user.get('username')
+            users = await load_users()
+            user_accounts = [u for u in users if u['username'] == username and u.get('status') == 'active']
+            
+            for user_account in user_accounts:
+                tenant_ids = user_account.get('tenant_ids', [])
+                if not tenant_ids and user_account.get('tenant_id'):
+                    tenant_ids = [user_account.get('tenant_id')]
+                user_tenant_ids.extend(tenant_ids)
         
         # Find config by ID or filename
         filenames = await async_listdir(config_dir)
@@ -1112,8 +1311,10 @@ async def get_config(config_id: str, user: dict = Depends(verify_token)):
             if filename.endswith('.json'):
                 filepath = os.path.join(config_dir, filename)
                 config = await async_read_json(filepath)
-                if config and (config.get("id") == config_id or filename == config_id) and config.get("tenant_id") == user_tenant_id:
-                    return config
+                if config and (config.get("id") == config_id or filename == config_id):
+                    # Super admin can access any config, regular users only configs in their tenants
+                    if is_super or config.get("tenant_id") in user_tenant_ids:
+                        return config
         
         raise HTTPException(status_code=404, detail="Config not found")
     except FileNotFoundError:
@@ -1123,19 +1324,34 @@ async def get_config(config_id: str, user: dict = Depends(verify_token)):
 
 @app.delete("/api/config/{config_id}")
 async def delete_config(config_id: str, user: dict = Depends(verify_token)):
-    """Delete a configuration (tenant-specific, async)"""
+    """Delete a configuration - super_admin can delete any tenant's config (async)"""
     try:
         config_dir = "configs"
-        user_tenant_id = user.get("tenant_id")
+        is_super = is_super_admin(user)
+        
+        # Get user's available tenant IDs
+        user_tenant_ids = []
+        if not is_super:
+            username = user.get('username')
+            users = await load_users()
+            user_accounts = [u for u in users if u['username'] == username and u.get('status') == 'active']
+            
+            for user_account in user_accounts:
+                tenant_ids = user_account.get('tenant_ids', [])
+                if not tenant_ids and user_account.get('tenant_id'):
+                    tenant_ids = [user_account.get('tenant_id')]
+                user_tenant_ids.extend(tenant_ids)
         
         filenames = await async_listdir(config_dir)
         for filename in filenames:
             if filename.endswith('.json'):
                 filepath = os.path.join(config_dir, filename)
                 config = await async_read_json(filepath)
-                if config and (config.get("id") == config_id or filename == config_id) and config.get("tenant_id") == user_tenant_id:
-                    await async_remove_file(filepath)
-                    return {"status": "success", "message": "Config deleted"}
+                if config and (config.get("id") == config_id or filename == config_id):
+                    # Super admin can delete any config, regular users only configs in their tenants
+                    if is_super or config.get("tenant_id") in user_tenant_ids:
+                        await async_remove_file(filepath)
+                        return {"status": "success", "message": "Config deleted"}
         
         raise HTTPException(status_code=404, detail="Config not found")
     except Exception as e:
@@ -1253,17 +1469,37 @@ async def delete_tenant(tenant_id: str, user: dict = Depends(verify_token)):
 
 @app.get("/api/admin/users")
 async def get_users(user: dict = Depends(verify_token)):
-    """Get users - super_admin sees all, admin sees only their tenant (async)"""
+    """Get users - super_admin sees all, admin sees only users in their tenants (async)"""
     if not is_admin_or_super(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     users = await load_users()
     
-    # Super admin sees all users, admin sees only their tenant
+    # Super admin sees all users, admin sees only users in their tenants
     if is_super_admin(user):
         tenant_users = users
     else:
-        tenant_users = [u for u in users if u.get('tenant_id') == user.get('tenant_id')]
+        # Get current admin's available tenant IDs
+        admin_username = user.get('username')
+        admin_accounts = [u for u in users if u['username'] == admin_username and u.get('status') == 'active']
+        
+        admin_tenant_ids = []
+        for admin_account in admin_accounts:
+            tenant_ids = admin_account.get('tenant_ids', [])
+            if not tenant_ids and admin_account.get('tenant_id'):
+                tenant_ids = [admin_account.get('tenant_id')]
+            admin_tenant_ids.extend(tenant_ids)
+        
+        # Filter users that have access to any of the admin's tenants
+        tenant_users = []
+        for u in users:
+            user_tenant_ids = u.get('tenant_ids', [])
+            if not user_tenant_ids and u.get('tenant_id'):
+                user_tenant_ids = [u.get('tenant_id')]
+            
+            # Check if there's any overlap between admin's tenants and user's tenants
+            if any(tenant_id in admin_tenant_ids for tenant_id in user_tenant_ids):
+                tenant_users.append(u)
     
     # Remove passwords from response
     for u in tenant_users:
@@ -1283,15 +1519,31 @@ async def create_user(user_data: Dict[str, Any], user: dict = Depends(verify_tok
     if any(u['username'] == user_data.get('username') for u in users):
         raise HTTPException(status_code=400, detail="Username already exists")
     
-    # Determine tenant_id
-    # Super admin can assign to any tenant, admin can only assign to their own tenant
+    # Determine tenant_ids
+    # Super admin can assign to any tenants, admin can only assign to their own tenants
     if is_super_admin(user):
-        tenant_id = user_data.get("tenant_id")
-        if not tenant_id:
-            raise HTTPException(status_code=400, detail="Tenant ID is required")
+        tenant_ids = user_data.get("tenant_ids", [])
+        # Also support old single tenant_id for backward compatibility
+        if not tenant_ids and user_data.get("tenant_id"):
+            tenant_ids = [user_data.get("tenant_id")]
+        if not tenant_ids:
+            raise HTTPException(status_code=400, detail="At least one tenant is required")
     else:
-        # Regular admin can only create users in their own tenant
-        tenant_id = user.get('tenant_id')
+        # Regular admin can only create users in their own tenants
+        admin_username = user.get('username')
+        admin_accounts = [u for u in users if u['username'] == admin_username and u.get('status') == 'active']
+        
+        admin_tenant_ids = []
+        for admin_account in admin_accounts:
+            t_ids = admin_account.get('tenant_ids', [])
+            if not t_ids and admin_account.get('tenant_id'):
+                t_ids = [admin_account.get('tenant_id')]
+            admin_tenant_ids.extend(t_ids)
+        
+        # Use admin's available tenants
+        tenant_ids = admin_tenant_ids if admin_tenant_ids else []
+        if not tenant_ids:
+            raise HTTPException(status_code=400, detail="Admin has no tenants assigned")
     
     # Validate role assignment
     new_role = user_data.get("role", "user")
@@ -1303,7 +1555,7 @@ async def create_user(user_data: Dict[str, Any], user: dict = Depends(verify_tok
         "password": user_data.get("password"),
         "name": user_data.get("name"),
         "email": user_data.get("email", ""),
-        "tenant_id": tenant_id,
+        "tenant_ids": tenant_ids,
         "role": new_role,
         "created_at": datetime.now().isoformat(),
         "status": user_data.get("status", "active")
@@ -1327,9 +1579,26 @@ async def update_user(username: str, user_data: Dict[str, Any], user: dict = Dep
     users = await load_users()
     user_found = False
     
+    # Get current admin's available tenant IDs
+    admin_tenant_ids = []
+    if not is_super_admin(user):
+        admin_username = user.get('username')
+        admin_accounts = [u for u in users if u['username'] == admin_username and u.get('status') == 'active']
+        
+        for admin_account in admin_accounts:
+            tenant_ids = admin_account.get('tenant_ids', [])
+            if not tenant_ids and admin_account.get('tenant_id'):
+                tenant_ids = [admin_account.get('tenant_id')]
+            admin_tenant_ids.extend(tenant_ids)
+    
     for i, u in enumerate(users):
-        # Super admin can edit any user, admin can only edit users in their tenant
-        can_edit = is_super_admin(user) or u.get('tenant_id') == user.get('tenant_id')
+        # Super admin can edit any user, admin can only edit users in their tenants
+        user_tenant_ids = u.get('tenant_ids', [])
+        if not user_tenant_ids and u.get('tenant_id'):
+            user_tenant_ids = [u.get('tenant_id')]
+        
+        # Check if admin has access to any of the user's tenants
+        can_edit = is_super_admin(user) or any(tenant_id in admin_tenant_ids for tenant_id in user_tenant_ids)
         
         if u['username'] == username and can_edit:
             # Update fields
@@ -1347,9 +1616,12 @@ async def update_user(username: str, user_data: Dict[str, Any], user: dict = Dep
                 users[i]['status'] = user_data['status']
             if 'password' in user_data and user_data['password']:
                 users[i]['password'] = user_data['password']
-            if 'tenant_id' in user_data and is_super_admin(user):
-                # Only super admin can change tenant
-                users[i]['tenant_id'] = user_data['tenant_id']
+            if 'tenant_ids' in user_data and is_super_admin(user):
+                # Only super admin can change tenants
+                users[i]['tenant_ids'] = user_data['tenant_ids']
+            elif 'tenant_id' in user_data and is_super_admin(user):
+                # Support old single tenant_id for backward compatibility
+                users[i]['tenant_ids'] = [user_data['tenant_id']]
             
             user_found = True
             break
@@ -1380,7 +1652,11 @@ async def delete_user(username: str, user: dict = Depends(verify_token)):
     # Check permissions
     if not is_super_admin(user):
         # Regular admin can only delete users in their tenant
-        if user_to_delete.get('tenant_id') != user.get('tenant_id'):
+        user_tenant_ids = user_to_delete.get('tenant_ids', [])
+        if not user_tenant_ids and user_to_delete.get('tenant_id'):
+            user_tenant_ids = [user_to_delete.get('tenant_id')]
+        
+        if user.get('tenant_id') not in user_tenant_ids:
             raise HTTPException(status_code=403, detail="Cannot delete users from other tenants")
         # Cannot delete super admins
         if user_to_delete.get('role') == 'super_admin':

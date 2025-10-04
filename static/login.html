@@ -337,6 +337,13 @@
         let currentUsername = '';
         let currentPassword = '';
         
+        // Clear error message when tenant is selected
+        tenantSelect.addEventListener('change', () => {
+            if (tenantSelect.value) {
+                errorAlert.style.display = 'none';
+            }
+        });
+        
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -346,6 +353,14 @@
             
             // Hide previous errors
             errorAlert.style.display = 'none';
+            
+            // If tenant selector is visible, validate that a tenant is selected
+            if (tenantSelectGroup.style.display !== 'none' && !selectedTenant) {
+                errorMessage.textContent = 'Please select a tenant to continue';
+                errorAlert.className = 'alert alert-warning';
+                errorAlert.style.display = 'block';
+                return;
+            }
             
             // Disable button and show loading
             loginBtn.disabled = true;
@@ -387,6 +402,9 @@
                             `<option value="${t.tenant_id}">${t.tenant_name} (${t.role})</option>`
                         ).join('');
                     
+                    // Focus on tenant select for better UX
+                    tenantSelect.focus();
+                    
                     // Auto-select tenant if user was switching
                     const switchToTenant = localStorage.getItem('switch_to_tenant');
                     if (switchToTenant) {
@@ -403,12 +421,14 @@
                     
                     // Re-enable button
                     loginBtn.disabled = false;
-                    loginBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Sign In';
+                    loginBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Continue';
                     
-                    // Show info message
-                    errorMessage.textContent = 'Please select a tenant to continue';
-                    errorAlert.className = 'alert alert-info';
-                    errorAlert.style.display = 'block';
+                    // Show info message only if no tenant selected yet
+                    if (!selectedTenant) {
+                        errorMessage.textContent = 'Please select a tenant from the dropdown above';
+                        errorAlert.className = 'alert alert-info';
+                        errorAlert.style.display = 'block';
+                    }
                     
                     return;
                 }

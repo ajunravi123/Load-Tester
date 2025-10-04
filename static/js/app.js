@@ -21,6 +21,7 @@ class LoadTestApp {
         this.currentHttpMethod = 'POST';  // Track current test's method
         this.currentSessionId = null;  // Track current test session
         this.availableTenants = [];  // Store user's available tenants
+        this.selectedTenantId = null;  // Track selected tenant for filtering (no token change)
         
         // Chart instances
         this.charts = {
@@ -95,9 +96,27 @@ class LoadTestApp {
             const data = await response.json();
             this.availableTenants = data.tenants || [];
             
-            // Only show tenant switcher if user has multiple tenants
+            // Initialize selectedTenantId
+            if (!this.selectedTenantId) {
+                if (this.availableTenants.length > 0) {
+                    // Find the current tenant (marked as is_current) or use the first one
+                    const currentTenant = this.availableTenants.find(t => t.is_current);
+                    this.selectedTenantId = currentTenant ? currentTenant.tenant_id : this.availableTenants[0].tenant_id;
+                } else {
+                    // No available tenants - fallback to token's tenant_id
+                    const tokenTenantId = localStorage.getItem('tenant_id');
+                    this.selectedTenantId = (tokenTenantId === '' || tokenTenantId === 'null') ? null : tokenTenantId;
+                }
+                console.log('[loadUserTenants] Initialized selectedTenantId to:', this.selectedTenantId);
+            }
+            
+            // Show tenant switcher if user has access to tenants
             if (this.availableTenants.length > 1) {
                 document.getElementById('tenantSwitcher').style.display = 'block';
+                const tenantDropdown = document.getElementById('tenantDropdown');
+                tenantDropdown.classList.add('dropdown-toggle');
+                tenantDropdown.style.cursor = 'pointer';
+                tenantDropdown.setAttribute('data-bs-toggle', 'dropdown');
                 this.populateTenantDropdown();
             } else if (this.availableTenants.length === 1) {
                 // Single tenant - just show the name (no dropdown needed)
@@ -123,9 +142,9 @@ class LoadTestApp {
         
         // Build dropdown items
         const items = this.availableTenants.map(tenant => {
-            const isCurrent = tenant.is_current;
-            const checkmark = isCurrent ? '<i class="fas fa-check text-success me-2"></i>' : '<span class="me-4"></span>';
-            const activeClass = isCurrent ? 'active' : '';
+            const isSelected = tenant.tenant_id === this.selectedTenantId;
+            const checkmark = isSelected ? '<i class="fas fa-check text-success me-2"></i>' : '<span class="me-4"></span>';
+            const activeClass = isSelected ? 'active' : '';
             
             return `
                 <li>
@@ -143,61 +162,111 @@ class LoadTestApp {
     }
     
     async switchTenant(tenantId, tenantName) {
-        // Don't switch if it's the current tenant
-        const currentTenantId = localStorage.getItem('tenant_id');
-        if (tenantId === currentTenantId) {
-            this.showToast('You are already in this tenant', 'info');
+        // Don't switch if it's the already selected tenant
+        if (tenantId === this.selectedTenantId) {
+            this.showToast('This tenant is already selected', 'info');
             return;
         }
         
-        if (!confirm(`Switch to tenant: ${tenantName}?`)) {
-            return;
+        // Update the selected tenant ID for filtering (no token creation)
+        this.selectedTenantId = tenantId;
+        
+        // Update the dropdown display to show the selected tenant
+        document.getElementById('currentTenantName').textContent = tenantName;
+        
+        // Update the dropdown items to show the checkmark on the selected tenant
+        this.populateTenantDropdown();
+        
+        // Clear current configuration and start fresh (like newTest but without confirmation)
+        this.clearConfigForTenantSwitch();
+        
+        this.showToast(`Switched to ${tenantName} - Ready for a new test!`, 'success');
+    }
+    
+    clearConfigForTenantSwitch() {
+        // Temporarily disable change tracking while clearing
+        this.isLoadingConfig = true;
+        
+        // Clear all fields
+        document.getElementById('apiUrl').value = '';
+        document.getElementById('httpMethod').value = 'POST';
+        
+        // Clear headers
+        this.headers = [];
+        document.getElementById('headersList').innerHTML = '';
+        
+        // Clear body fields
+        this.bodyFields = [];
+        document.getElementById('bodyFieldsList').innerHTML = '';
+        
+        const rawBodyInput = document.getElementById('rawBodyInput');
+        if (rawBodyInput) rawBodyInput.value = '';
+        
+        // Reset body type to JSON
+        this.bodyType = 'json';
+        document.querySelectorAll('[data-body-type]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.bodyType === 'json');
+        });
+        this.toggleBodySection();
+        
+        // Clear validation rules
+        this.validationRules = [];
+        this.renderValidationRules();
+        
+        // Clear load test settings
+        const concurrentCalls = document.getElementById('concurrentCalls');
+        const sequentialBatches = document.getElementById('sequentialBatches');
+        const timeout = document.getElementById('timeout');
+        const followRedirects = document.getElementById('followRedirects');
+        const verifySSL = document.getElementById('verifySSL');
+        
+        if (concurrentCalls) concurrentCalls.value = '1';
+        if (sequentialBatches) sequentialBatches.value = '';
+        if (timeout) timeout.value = '600';
+        if (followRedirects) followRedirects.checked = true;
+        if (verifySSL) verifySSL.checked = false;
+        
+        // Clear results
+        this.currentSession = null;
+        const resultsSection = document.getElementById('resultsSection');
+        if (resultsSection) {
+            resultsSection.innerHTML = '<div class="text-center text-muted py-5">Run a test to see results here</div>';
         }
         
-        try {
-            // Show loading state
-            this.showToast('Switching tenant...', 'info');
-            
-            // Call the switch tenant API
-            const response = await fetch('/api/user/switch-tenant', {
-                method: 'POST',
-                headers: {
-                    ...this.getAuthHeaders(),
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ tenant_id: tenantId })
-            });
-            
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Failed to switch tenant');
-            }
-            
-            const data = await response.json();
-            
-            // Update stored credentials with new token
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('username', data.username);
-            localStorage.setItem('name', data.name);
-            localStorage.setItem('role', data.role || 'user');
-            localStorage.setItem('tenant_id', data.tenant_id || '');
-            localStorage.setItem('tenant_name', data.tenant_name || 'Unknown');
-            
-            // Update cookie
-            document.cookie = `access_token=${data.access_token}; path=/; max-age=${data.expires_in}; SameSite=Strict`;
-            
-            // Show success message
-            this.showToast(`Switched to ${tenantName} successfully!`, 'success');
-            
-            // Reload the page to refresh all data for the new tenant
-            setTimeout(() => {
-                window.location.reload();
-            }, 500);
-            
-        } catch (error) {
-            console.error('Error switching tenant:', error);
-            this.showToast(`Failed to switch tenant: ${error.message}`, 'danger');
-        }
+        // Hide stats, charts and progress
+        const statsGrid = document.getElementById('statsGrid');
+        const progressCard = document.getElementById('progressCard');
+        const resultsTableContainer = document.getElementById('resultsTableContainer');
+        const chartsSection = document.getElementById('chartsSection');
+        if (statsGrid) statsGrid.style.display = 'none';
+        if (progressCard) progressCard.style.display = 'none';
+        if (resultsTableContainer) resultsTableContainer.style.display = 'none';
+        if (chartsSection) chartsSection.style.display = 'none';
+        
+        // Destroy chart instances
+        Object.values(this.charts).forEach(chart => {
+            if (chart) chart.destroy();
+        });
+        this.charts = {
+            responseTime: null,
+            successRate: null,
+            statusCode: null
+        };
+        
+        // Clear config tracking
+        this.currentConfigId = null;
+        this.currentConfigName = null;
+        this.hasUnsavedChanges = false;
+        
+        // Hide config name bar
+        const configNameBar = document.getElementById('configNameBar');
+        if (configNameBar) configNameBar.style.display = 'none';
+        
+        // Update empty states
+        this.updateEmptyStates();
+        
+        // Re-enable change tracking
+        this.isLoadingConfig = false;
     }
     
     escapeHtml(text) {
@@ -264,9 +333,28 @@ class LoadTestApp {
     }
     
     newTest() {
-        // Check if there's a loaded configuration with unsaved changes
+        // Check if there's anything to clear
+        const hasApiUrl = document.getElementById('apiUrl').value.trim() !== '';
+        const hasHeaders = this.headers.length > 0;
+        const hasBodyFields = this.bodyFields.length > 0;
+        const hasRawBody = document.getElementById('rawBodyInput')?.value.trim() !== '';
+        const hasValidationRules = this.validationRules.length > 0;
+        const hasLoadedConfig = this.currentConfigId !== null;
+        const hasUnsavedChanges = this.hasUnsavedChanges;
+        
+        // Only show confirmation if there's something to clear
+        const hasContent = hasApiUrl || hasHeaders || hasBodyFields || hasRawBody || 
+                          hasValidationRules || hasLoadedConfig || hasUnsavedChanges;
+        
+        if (!hasContent) {
+            // Nothing to clear, just show success message
+            this.showToast('✨ Ready for a new test!', 'info');
+            return;
+        }
+        
+        // Show appropriate confirmation message
         let confirmMessage = 'Are you sure you want to clear all fields and start a new test?';
-        if (this.currentConfigId && this.hasUnsavedChanges) {
+        if (hasLoadedConfig && hasUnsavedChanges) {
             confirmMessage = 'Close configuration? Any unsaved changes will be lost.\n\nAre you sure you want to start a new test?';
         }
         
@@ -1740,7 +1828,10 @@ class LoadTestApp {
         // Check for duplicate names (excluding current config)
         try {
             const listResponse = await fetch('/api/config/list', {
-                headers: this.getAuthHeaders()
+                headers: {
+                    ...this.getAuthHeaders(),
+                    'Cache-Control': 'no-cache'
+                }
             });
             const data = await listResponse.json();
             const duplicate = data.configs.find(c => 
@@ -1763,6 +1854,7 @@ class LoadTestApp {
         const config = {
             name: newName,
             id: this.currentConfigId,
+            tenant_id: this.selectedTenantId, // Include selected tenant ID
             apiUrl: document.getElementById('apiUrl').value,
             httpMethod: document.getElementById('httpMethod').value,
             headers: this.headers,
@@ -1824,8 +1916,17 @@ class LoadTestApp {
         // Check for duplicate names (only if saving as new)
         if (!isUpdate) {
             try {
+                // Use selectedTenantId (properly initialized in loadUserTenants)
+                const tenantIdToFilter = this.selectedTenantId;
+                
                 const listResponse = await fetch('/api/config/list', {
-                    headers: this.getAuthHeaders()
+                    method: 'POST',
+                    headers: {
+                        ...this.getAuthHeaders(),
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify({ tenant_id: tenantIdToFilter })
                 });
                 const data = await listResponse.json();
                 const existingNames = data.configs.map(c => c.name.toLowerCase());
@@ -1842,6 +1943,7 @@ class LoadTestApp {
         const config = {
             name,
             id: isUpdate ? this.currentConfigId : null,
+            tenant_id: this.selectedTenantId, // Include selected tenant ID
             apiUrl: document.getElementById('apiUrl').value,
             httpMethod: document.getElementById('httpMethod').value,
             headers: this.headers,
@@ -1881,12 +1983,31 @@ class LoadTestApp {
         }
     }
     
-    async showLoadConfigModal() {
+    async refreshConfigList() {
+        // Refresh the config list without showing/hiding the modal
         try {
+            const tenantIdToFilter = this.selectedTenantId;
+            
+            console.log('[refreshConfigList] Filtering by tenant_id:', tenantIdToFilter);
+            
             const response = await fetch('/api/config/list', {
-                headers: this.getAuthHeaders()
+                method: 'POST',
+                headers: {
+                    ...this.getAuthHeaders(),
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                },
+                body: JSON.stringify({ tenant_id: tenantIdToFilter })
             });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch configs: ${response.status}`);
+            }
+            
             const data = await response.json();
+            
+            console.log('Configs loaded:', data.configs.length, 'configs');
             
             const list = document.getElementById('configsList');
             const empty = document.getElementById('configsEmpty');
@@ -1904,10 +2025,18 @@ class LoadTestApp {
                     const isActive = config.id === this.currentConfigId;
                     item.className = `list-group-item config-item${isActive ? ' active' : ''}`;
                     item.style.cursor = 'pointer';
+                    
+                    // Show tenant info for super admin
+                    const tenantBadge = config.tenant_name ? 
+                        `<span class="badge bg-info text-white ms-2">${this.escapeHtml(config.tenant_name)}</span>` : '';
+                    
                     item.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
                             <div class="flex-grow-1">
-                                <div class="config-item-name">${config.name}${isActive ? ' <small class="text-primary">(Current)</small>' : ''}</div>
+                                <div class="config-item-name">
+                                    ${config.name}${isActive ? ' <small class="text-primary">(Current)</small>' : ''}
+                                    ${tenantBadge}
+                                </div>
                                 <div class="config-item-meta">Saved: ${new Date(config.saved_at).toLocaleString()}</div>
                             </div>
                             <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); app.deleteConfig('${config.id}')">
@@ -1919,8 +2048,19 @@ class LoadTestApp {
                     list.appendChild(item);
                 });
             }
+        } catch (error) {
+            this.showToast('Failed to load configurations', 'danger');
+        }
+    }
+    
+    async showLoadConfigModal() {
+        try {
+            // Refresh the list first
+            await this.refreshConfigList();
             
-            const modal = new bootstrap.Modal(document.getElementById('loadConfigModal'));
+            // Then show the modal
+            const modalElement = document.getElementById('loadConfigModal');
+            const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
             modal.show();
         } catch (error) {
             this.showToast('Failed to load configurations', 'danger');
@@ -1997,7 +2137,9 @@ class LoadTestApp {
             if (!response.ok) throw new Error('Failed to delete');
             
             this.showToast('Configuration deleted', 'success');
-            this.showLoadConfigModal(); // Refresh list
+            
+            // Just refresh the list, don't re-show modal (it's already open)
+            await this.refreshConfigList();
         } catch (error) {
             this.showToast('Failed to delete configuration', 'danger');
         }
