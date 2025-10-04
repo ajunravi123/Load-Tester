@@ -419,6 +419,21 @@ pre {
     z-index: 1020;
 }
 
+/* Tenant Switcher - Higher z-index for dropdown */
+#tenantSwitcher {
+    position: relative;
+    z-index: 1050;
+}
+
+#tenantSwitcher .dropdown-menu {
+    z-index: 1060 !important;
+}
+
+/* Ensure navbar dropdowns appear above everything */
+.navbar .dropdown-menu {
+    z-index: 1060 !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;

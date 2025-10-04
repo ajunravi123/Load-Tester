@@ -1,9 +1,14 @@
 {
   "users": [
     {
-      "username": "admin",
-      "password": "admin123",
-      "name": "Administrator"
+      "username": "superadmin",
+      "password": "super123",
+      "name": "Super Administrator",
+      "tenant_id": null,
+      "role": "super_admin",
+      "email": "superadmin@impactx.com",
+      "created_at": "2025-01-01T00:00:00",
+      "status": "active"
     }
   ]
 }

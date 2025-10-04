@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - LoadLion</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <style>
+        .admin-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+        
+        [data-theme="dark"] .stats-card {
+            background: #25282e;
+        }
+        
+        .stats-card h3 {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0;
+        }
+        
+        .stats-card p {
+            margin: 0;
+            color: #6c757d;
+        }
+        
+        .table-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .nav-pills .nav-link {
+            border-radius: 50px;
+        }
+        
+        .nav-pills .nav-link.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <img src="/static/images/lion.png" alt="LoadLion" style="width: 32px; height: 28px; vertical-align: middle;" />
+                LoadLion Admin
+            </a>
+            <div class="d-flex align-items-center gap-3">
+                <button id="themeToggle" class="btn btn-outline-light">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <a href="/" class="btn btn-outline-light">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+                <button id="logoutBtn" class="btn btn-light">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Admin Menu</h5>
+                        <ul class="nav nav-pills flex-column" id="adminTabs" role="tablist">
+                            <li class="nav-item mb-2" role="presentation">
+                                <button class="nav-link active w-100" id="overview-tab" data-bs-toggle="pill" data-bs-target="#overview" type="button">
+                                    <i class="fas fa-chart-line me-2"></i> Overview
+                                </button>
+                            </li>
+                            <li class="nav-item mb-2" role="presentation">
+                                <button class="nav-link w-100" id="users-tab" data-bs-toggle="pill" data-bs-target="#users" type="button">
+                                    <i class="fas fa-users me-2"></i> Users
+                                </button>
+                            </li>
+                            <li class="nav-item mb-2" id="tenantsTabButton" role="presentation" style="display: none;">
+                                <button class="nav-link w-100" id="tenants-tab" data-bs-toggle="pill" data-bs-target="#tenants" type="button">
+                                    <i class="fas fa-building me-2"></i> Tenants
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <div class="tab-content" id="adminTabContent">
+                    <!-- Overview Tab -->
+                    <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                        <h2 class="mb-4">Dashboard Overview</h2>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="stats-card">
+                                    <p class="text-muted">Total Users</p>
+                                    <h3 id="totalUsers">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="stats-card">
+                                    <p class="text-muted">Active Users</p>
+                                    <h3 id="activeUsers">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="stats-card">
+                                    <p class="text-muted">Total Tenants</p>
+                                    <h3 id="totalTenants">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Users Tab -->
+                    <div class="tab-pane fade" id="users" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h2>User Management</h2>
+                            <button class="btn btn-primary" onclick="adminApp.showUserModal()">
+                                <i class="fas fa-plus"></i> Add User
+                            </button>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead id="usersTableHead">
+                                            <tr>
+                                                <th>Username</th>
+                                                <th>Name</th>
+                                                <th>Email</th>
+                                                <th>Role</th>
+                                                <th>Status</th>
+                                                <th>Created</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="usersTableBody">
+                                            <tr>
+                                                <td colspan="7" class="text-center">Loading...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tenants Tab -->
+                    <div class="tab-pane fade" id="tenants" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h2>Tenant Management</h2>
+                            <button class="btn btn-primary" onclick="adminApp.showTenantModal()">
+                                <i class="fas fa-plus"></i> Add Tenant
+                            </button>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Tenant Name</th>
+                                                <th>Contact Email</th>
+                                                <th>Max Users</th>
+                                                <th>Status</th>
+                                                <th>Created</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tenantsTableBody">
+                                            <tr>
+                                                <td colspan="6" class="text-center">Loading...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Modal -->
+    <div class="modal fade" id="userModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userModalTitle">Add User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="userEditMode" value="create">
+                    <input type="hidden" id="userEditUsername">
+                    
+                    <div class="mb-3">
+                        <label for="userUsername" class="form-label">Username *</label>
+                        <input type="text" class="form-control" id="userUsername" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userName" class="form-label">Full Name *</label>
+                        <input type="text" class="form-control" id="userName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="userEmail">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userPassword" class="form-label">Password <span id="passwordRequired">*</span></label>
+                        <input type="password" class="form-control" id="userPassword">
+                        <small class="text-muted" id="passwordHelp">Leave blank to keep existing password</small>
+                    </div>
+                    
+                    <div class="mb-3" id="tenantSelectGroup" style="display: none;">
+                        <label for="userTenant" class="form-label">Tenant *</label>
+                        <select class="form-select" id="userTenant">
+                            <option value="">Loading...</option>
+                        </select>
+                        <small class="text-muted">Select the tenant this user belongs to</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userRole" class="form-label">Role *</label>
+                        <select class="form-select" id="userRole">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                            <option value="super_admin" id="superAdminOption" style="display: none;">Super Admin</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="userStatus" class="form-label">Status *</label>
+                        <select class="form-select" id="userStatus">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="adminApp.saveUser()">Save User</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Modal -->
+    <div class="modal fade" id="tenantModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="tenantModalTitle">Add Tenant</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="tenantEditMode" value="create">
+                    <input type="hidden" id="tenantEditId">
+                    
+                    <div class="mb-3">
+                        <label for="tenantName" class="form-label">Tenant Name *</label>
+                        <input type="text" class="form-control" id="tenantName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tenantEmail" class="form-label">Contact Email</label>
+                        <input type="email" class="form-control" id="tenantEmail">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tenantMaxUsers" class="form-label">Max Users *</label>
+                        <input type="number" class="form-control" id="tenantMaxUsers" value="50" min="1">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tenantStatus" class="form-label">Status *</label>
+                        <select class="form-select" id="tenantStatus">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="adminApp.saveTenant()">Save Tenant</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Admin App JavaScript -->
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>
+

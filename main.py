@@ -18,6 +18,8 @@ import uuid
 import re
 import jwt
 from datetime import datetime, timedelta
+import aiofiles
+import aiofiles.os
 
 # Disable SSL verification for development
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -29,6 +31,48 @@ JWT_EXPIRATION_DAYS = 14
 
 # HTTP Bearer token security
 security = HTTPBearer()
+
+# Async File I/O Helper Functions
+async def async_read_json(filepath: str, default: Any = None) -> Any:
+    """Async read JSON file"""
+    try:
+        async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            return json.loads(content)
+    except FileNotFoundError:
+        return default
+    except json.JSONDecodeError:
+        return default
+
+async def async_write_json(filepath: str, data: Any) -> None:
+    """Async write JSON file"""
+    async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+        await f.write(json.dumps(data, indent=2, default=str))
+
+async def async_read_text(filepath: str) -> str:
+    """Async read text file"""
+    async with aiofiles.open(filepath, 'r', encoding='utf-8') as f:
+        return await f.read()
+
+async def async_file_exists(filepath: str) -> bool:
+    """Check if file exists asynchronously"""
+    try:
+        await aiofiles.os.stat(filepath)
+        return True
+    except FileNotFoundError:
+        return False
+
+async def async_remove_file(filepath: str) -> None:
+    """Async remove file"""
+    await aiofiles.os.remove(filepath)
+
+async def async_rename_file(old_path: str, new_path: str) -> None:
+    """Async rename/move file"""
+    await aiofiles.os.rename(old_path, new_path)
+
+async def async_listdir(directory: str) -> List[str]:
+    """Async list directory contents"""
+    return await aiofiles.os.listdir(directory)
 
 class ValidationType(str, Enum):
     EXISTS = "exists"
@@ -492,7 +536,7 @@ class EnhancedLoadTester:
                     }))
             
             # Save results to file
-            self._save_results(test_session)
+            await self._save_results(test_session)
             
             return test_session
             
@@ -509,8 +553,8 @@ class EnhancedLoadTester:
             
             raise HTTPException(status_code=500, detail=f"Load test failed: {str(e)}")
     
-    def _save_results(self, test_session: TestSession):
-        """Save test results to file"""
+    async def _save_results(self, test_session: TestSession):
+        """Save test results to file (async)"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Convert to serializable format
@@ -518,8 +562,7 @@ class EnhancedLoadTester:
         
         # Save detailed results to load_test folder
         results_file = os.path.join(self.load_test_directory, f"load_test_{timestamp}.json")
-        with open(results_file, 'w') as f:
-            json.dump(session_dict, f, indent=2, default=str)
+        await async_write_json(results_file, session_dict)
         
         # Save summary to summary folder
         summary_file = os.path.join(self.summary_directory, f"summary_{timestamp}.json")
@@ -530,8 +573,7 @@ class EnhancedLoadTester:
             "stats": session_dict["stats"],
             "status": test_session.status
         }
-        with open(summary_file, 'w') as f:
-            json.dump(summary, f, indent=2, default=str)
+        await async_write_json(summary_file, summary)
 
 # Utility Functions
 def migrate_log_files():
@@ -576,30 +618,68 @@ def migrate_log_files():
                 except Exception as e:
                     print(f"Error moving {filename}: {e}")
 
-# Authentication Functions
-def load_users():
-    """Load users from JSON file"""
-    try:
-        with open('users.json', 'r') as f:
-            data = json.load(f)
-            return data.get('users', [])
-    except FileNotFoundError:
-        return []
+# Tenant Management Functions
+async def load_tenants():
+    """Load tenants from JSON file (async)"""
+    data = await async_read_json('tenants.json', default={})
+    return data.get('tenants', [])
 
-def authenticate_user(username: str, password: str):
-    """Authenticate user credentials"""
-    users = load_users()
-    for user in users:
-        if user['username'] == username and user['password'] == password:
-            return user
+async def save_tenants(tenants):
+    """Save tenants to JSON file (async)"""
+    await async_write_json('tenants.json', {'tenants': tenants})
+
+async def get_tenant_by_id(tenant_id: str):
+    """Get tenant by ID (async)"""
+    tenants = await load_tenants()
+    for tenant in tenants:
+        if tenant['id'] == tenant_id:
+            return tenant
     return None
 
-def create_token(username: str, name: str):
+# Authentication Functions
+async def load_users():
+    """Load users from JSON file (async)"""
+    data = await async_read_json('users.json', default={})
+    return data.get('users', [])
+
+async def save_users(users):
+    """Save users to JSON file (async)"""
+    await async_write_json('users.json', {'users': users})
+
+async def authenticate_user(username: str, password: str, tenant_id: str = None):
+    """Authenticate user credentials - supports multiple tenants (async)"""
+    users = await load_users()
+    matching_users = []
+    
+    for user in users:
+        if user['username'] == username and user['password'] == password and user.get('status') == 'active':
+            matching_users.append(user)
+    
+    # If tenant_id specified, return specific tenant user
+    if tenant_id:
+        for user in matching_users:
+            if user.get('tenant_id') == tenant_id:
+                return user
+        return None
+    
+    # If only one match, return it
+    if len(matching_users) == 1:
+        return matching_users[0]
+    
+    # If multiple matches, return all (caller will handle)
+    if len(matching_users) > 1:
+        return matching_users
+    
+    return None
+
+def create_token(username: str, name: str, tenant_id: str = None, role: str = 'user'):
     """Create JWT token"""
     expiration = datetime.utcnow() + timedelta(days=JWT_EXPIRATION_DAYS)
     payload = {
         'username': username,
         'name': name,
+        'tenant_id': tenant_id,
+        'role': role,
         'exp': expiration
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -630,8 +710,8 @@ def optional_verify_token(request: Request):
 
 # FastAPI app initialization
 app = FastAPI(
-    title="ImpactX - Load Testing Tool",
-    description="A comprehensive load testing application with futuristic UI and advanced validation capabilities",
+    title="LoadLion - Hunt down performance bottlenecks",
+    description="A powerful load testing application to hunt down performance bottlenecks with advanced validation capabilities",
     version="2.0.0"
 )
 
@@ -655,23 +735,64 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
-    """Serve the login page"""
-    with open("static/login.html", "r") as f:
-        return HTMLResponse(content=f.read())
+    """Serve the login page (async)"""
+    content = await async_read_text("static/login.html")
+    return HTMLResponse(content=content)
+
+class LoginWithTenantRequest(BaseModel):
+    """Login request with optional tenant selection"""
+    username: str
+    password: str
+    tenant_id: Optional[str] = None
 
 @app.post("/api/login")
-async def login(login_request: LoginRequest):
-    """Authenticate user and return JWT token"""
-    user = authenticate_user(login_request.username, login_request.password)
-    if not user:
+async def login(login_request: LoginWithTenantRequest):
+    """Authenticate user and return JWT token - supports multi-tenant"""
+    result = await authenticate_user(login_request.username, login_request.password, login_request.tenant_id)
+    
+    if not result:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
-    token = create_token(user['username'], user['name'])
+    # Check if multiple tenants found (list returned)
+    if isinstance(result, list):
+        # Return available tenants for user to choose
+        tenants_info = []
+        tenants = await load_tenants()
+        for user in result:
+            tenant_id = user.get('tenant_id')
+            tenant = next((t for t in tenants if t['id'] == tenant_id), None)
+            tenants_info.append({
+                "tenant_id": tenant_id,
+                "tenant_name": tenant['name'] if tenant else tenant_id,
+                "role": user.get('role', 'user')
+            })
+        
+        return {
+            "multiple_tenants": True,
+            "tenants": tenants_info
+        }
+    
+    # Single user found
+    user = result
+    
+    # Get tenant name
+    tenant = await get_tenant_by_id(user.get('tenant_id'))
+    tenant_name = tenant['name'] if tenant else 'Unknown'
+    
+    token = create_token(
+        user['username'], 
+        user['name'],
+        user.get('tenant_id'),
+        user.get('role', 'user')
+    )
     return {
         "access_token": token,
         "token_type": "bearer",
         "username": user['username'],
         "name": user['name'],
+        "role": user.get('role', 'user'),
+        "tenant_id": user.get('tenant_id'),
+        "tenant_name": tenant_name,
         "expires_in": JWT_EXPIRATION_DAYS * 24 * 60 * 60  # seconds
     }
 
@@ -679,6 +800,85 @@ async def login(login_request: LoginRequest):
 async def logout(user: dict = Depends(verify_token)):
     """Logout endpoint (token invalidation handled client-side)"""
     return {"message": "Logged out successfully"}
+
+@app.get("/api/user/tenants")
+async def get_user_tenants(user: dict = Depends(verify_token)):
+    """Get all tenants available for the current user"""
+    username = user.get('username')
+    current_tenant_id = user.get('tenant_id')
+    
+    # Find all accounts for this username
+    users = await load_users()
+    user_accounts = [u for u in users if u['username'] == username and u.get('status') == 'active']
+    
+    # Get tenant info for each account
+    tenants = await load_tenants()
+    available_tenants = []
+    
+    for user_account in user_accounts:
+        tenant_id = user_account.get('tenant_id')
+        tenant = next((t for t in tenants if t['id'] == tenant_id), None)
+        
+        available_tenants.append({
+            "tenant_id": tenant_id,
+            "tenant_name": tenant['name'] if tenant else tenant_id or 'Unknown',
+            "role": user_account.get('role', 'user'),
+            "is_current": tenant_id == current_tenant_id
+        })
+    
+    return {
+        "tenants": available_tenants,
+        "current_tenant_id": current_tenant_id
+    }
+
+@app.post("/api/user/switch-tenant")
+async def switch_tenant(request: Dict[str, str], user: dict = Depends(verify_token)):
+    """Switch to a different tenant without re-authentication"""
+    target_tenant_id = request.get('tenant_id')
+    username = user.get('username')
+    
+    if not target_tenant_id:
+        raise HTTPException(status_code=400, detail="Tenant ID is required")
+    
+    # Find all accounts for this username
+    users = await load_users()
+    target_user = None
+    
+    for u in users:
+        if (u['username'] == username and 
+            u.get('tenant_id') == target_tenant_id and 
+            u.get('status') == 'active'):
+            target_user = u
+            break
+    
+    if not target_user:
+        raise HTTPException(
+            status_code=403, 
+            detail="You don't have access to this tenant"
+        )
+    
+    # Get tenant name
+    tenant = await get_tenant_by_id(target_tenant_id)
+    tenant_name = tenant['name'] if tenant else 'Unknown'
+    
+    # Create new token for the target tenant
+    new_token = create_token(
+        target_user['username'],
+        target_user['name'],
+        target_user.get('tenant_id'),
+        target_user.get('role', 'user')
+    )
+    
+    return {
+        "access_token": new_token,
+        "token_type": "bearer",
+        "username": target_user['username'],
+        "name": target_user['name'],
+        "role": target_user.get('role', 'user'),
+        "tenant_id": target_user.get('tenant_id'),
+        "tenant_name": tenant_name,
+        "expires_in": JWT_EXPIRATION_DAYS * 24 * 60 * 60
+    }
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -690,8 +890,8 @@ async def read_root(request: Request):
     
     try:
         jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        with open("static/index.html", "r") as f:
-            return HTMLResponse(content=f.read())
+        content = await async_read_text("static/index.html")
+        return HTMLResponse(content=content)
     except:
         return RedirectResponse(url="/login", status_code=303)
 
@@ -755,87 +955,94 @@ async def get_test_results(session_id: str, user: dict = Depends(verify_token)):
 
 @app.get("/api/test/history")
 async def get_test_history(user: dict = Depends(verify_token)):
-    """Get list of all test sessions"""
+    """Get list of all test sessions (async)"""
     log_files = []
     summary_dir = os.path.join("logs", "summary")
     
     # Check new summary directory first
     if os.path.exists(summary_dir):
-        for filename in os.listdir(summary_dir):
+        filenames = await async_listdir(summary_dir)
+        for filename in filenames:
             if filename.startswith("summary_") and filename.endswith(".json"):
                 try:
-                    with open(os.path.join(summary_dir, filename), "r") as f:
-                        summary = json.load(f)
+                    filepath = os.path.join(summary_dir, filename)
+                    summary = await async_read_json(filepath)
+                    if summary:
                         log_files.append(summary)
-                except (IOError, json.JSONDecodeError):
+                except Exception:
                     continue
     
     # Also check old logs directory for backward compatibility
     if os.path.exists("logs"):
-        for filename in os.listdir("logs"):
+        filenames = await async_listdir("logs")
+        for filename in filenames:
             if filename.startswith("summary_") and filename.endswith(".json"):
                 try:
-                    with open(os.path.join("logs", filename), "r") as f:
-                        summary = json.load(f)
+                    filepath = os.path.join("logs", filename)
+                    summary = await async_read_json(filepath)
+                    if summary:
                         log_files.append(summary)
-                except (IOError, json.JSONDecodeError):
+                except Exception:
                     continue
     
     return {"sessions": sorted(log_files, key=lambda x: x.get("timestamp", ""), reverse=True)}
 
 @app.post("/api/config/save")
 async def save_config(config: Dict[str, Any], user: dict = Depends(verify_token)):
-    """Save or update configuration to backend"""
+    """Save or update configuration to backend (async)"""
     try:
         config_dir = "configs"
         os.makedirs(config_dir, exist_ok=True)
+        
+        # Add tenant_id to config
+        config["tenant_id"] = user.get("tenant_id")
+        config["created_by"] = user.get("username")
         
         config_id = config.get("id")
         config_name = config.get("name", f"config_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         
         # Check for duplicate names (only if creating new)
         if not config_id:
-            for filename in os.listdir(config_dir):
+            filenames = await async_listdir(config_dir)
+            for filename in filenames:
                 if filename.endswith('.json'):
                     filepath = os.path.join(config_dir, filename)
                     try:
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            existing_config = json.load(f)
-                            if existing_config.get("name", "").lower() == config_name.lower():
-                                raise HTTPException(
-                                    status_code=400, 
-                                    detail="Configuration name already exists"
-                                )
-                    except json.JSONDecodeError:
+                        existing_config = await async_read_json(filepath)
+                        if existing_config and existing_config.get("name", "").lower() == config_name.lower():
+                            raise HTTPException(
+                                status_code=400, 
+                                detail="Configuration name already exists"
+                            )
+                    except Exception:
                         continue
         
         # If updating, find and use existing file
         if config_id:
             # Find existing file with this ID
-            for filename in os.listdir(config_dir):
+            filenames = await async_listdir(config_dir)
+            for filename in filenames:
                 if filename.endswith('.json'):
                     filepath = os.path.join(config_dir, filename)
                     try:
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            existing_config = json.load(f)
-                            if existing_config.get("id") == config_id:
-                                # Update existing config
-                                config["saved_at"] = datetime.now().isoformat()
-                                config["created_at"] = existing_config.get("created_at", datetime.now().isoformat())
-                                
-                                # Use new filename if name changed
-                                new_filename = f"{config_name.replace(' ', '_')}.json"
-                                new_filepath = os.path.join(config_dir, new_filename)
-                                
-                                with open(new_filepath, 'w', encoding='utf-8') as f:
-                                    json.dump(config, f, indent=2, default=str)
-                                
-                                # Remove old file if name changed
-                                if new_filepath != filepath:
-                                    os.remove(filepath)
-                                
-                                return {"status": "success", "filename": new_filename, "id": config_id}
-                    except json.JSONDecodeError:
+                        existing_config = await async_read_json(filepath)
+                        if existing_config and existing_config.get("id") == config_id:
+                            # Update existing config
+                            config["saved_at"] = datetime.now().isoformat()
+                            config["created_at"] = existing_config.get("created_at", datetime.now().isoformat())
+                            
+                            # Use new filename if name changed
+                            new_filename = f"{config_name.replace(' ', '_')}.json"
+                            new_filepath = os.path.join(config_dir, new_filename)
+                            
+                            await async_write_json(new_filepath, config)
+                            
+                            # Remove old file if name changed
+                            if new_filepath != filepath:
+                                await async_remove_file(filepath)
+                            
+                            return {"status": "success", "filename": new_filename, "id": config_id}
+                    except Exception:
                         continue
         
         # Create new config
@@ -847,8 +1054,7 @@ async def save_config(config: Dict[str, Any], user: dict = Depends(verify_token)
         config["created_at"] = datetime.now().isoformat()
         config["id"] = str(uuid.uuid4())
         
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, default=str)
+        await async_write_json(filepath, config)
         
         return {"status": "success", "filename": filename, "id": config["id"]}
     except HTTPException:
@@ -858,25 +1064,31 @@ async def save_config(config: Dict[str, Any], user: dict = Depends(verify_token)
 
 @app.get("/api/config/list")
 async def list_configs(user: dict = Depends(verify_token)):
-    """List all saved configurations"""
+    """List all saved configurations for current tenant (async)"""
     try:
         config_dir = "configs"
         if not os.path.exists(config_dir):
             return {"configs": []}
         
         configs = []
-        for filename in os.listdir(config_dir):
+        user_tenant_id = user.get("tenant_id")
+        
+        filenames = await async_listdir(config_dir)
+        for filename in filenames:
             if filename.endswith('.json'):
                 try:
                     filepath = os.path.join(config_dir, filename)
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        config = json.load(f)
-                        configs.append({
-                            "id": config.get("id", filename),
-                            "name": config.get("name", filename.replace('.json', '')),
-                            "saved_at": config.get("saved_at", ""),
-                            "filename": filename
-                        })
+                    config = await async_read_json(filepath)
+                    if config:
+                        # Filter by tenant
+                        if config.get("tenant_id") == user_tenant_id:
+                            configs.append({
+                                "id": config.get("id", filename),
+                                "name": config.get("name", filename.replace('.json', '')),
+                                "saved_at": config.get("saved_at", ""),
+                                "filename": filename,
+                                "created_by": config.get("created_by", "")
+                            })
                 except Exception as e:
                     print(f"Error reading {filename}: {e}")
                     continue
@@ -889,18 +1101,19 @@ async def list_configs(user: dict = Depends(verify_token)):
 
 @app.get("/api/config/{config_id}")
 async def get_config(config_id: str, user: dict = Depends(verify_token)):
-    """Get a specific configuration"""
+    """Get a specific configuration (tenant-specific, async)"""
     try:
         config_dir = "configs"
+        user_tenant_id = user.get("tenant_id")
         
         # Find config by ID or filename
-        for filename in os.listdir(config_dir):
+        filenames = await async_listdir(config_dir)
+        for filename in filenames:
             if filename.endswith('.json'):
                 filepath = os.path.join(config_dir, filename)
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    if config.get("id") == config_id or filename == config_id:
-                        return config
+                config = await async_read_json(filepath)
+                if config and (config.get("id") == config_id or filename == config_id) and config.get("tenant_id") == user_tenant_id:
+                    return config
         
         raise HTTPException(status_code=404, detail="Config not found")
     except FileNotFoundError:
@@ -910,18 +1123,19 @@ async def get_config(config_id: str, user: dict = Depends(verify_token)):
 
 @app.delete("/api/config/{config_id}")
 async def delete_config(config_id: str, user: dict = Depends(verify_token)):
-    """Delete a configuration"""
+    """Delete a configuration (tenant-specific, async)"""
     try:
         config_dir = "configs"
+        user_tenant_id = user.get("tenant_id")
         
-        for filename in os.listdir(config_dir):
+        filenames = await async_listdir(config_dir)
+        for filename in filenames:
             if filename.endswith('.json'):
                 filepath = os.path.join(config_dir, filename)
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    if config.get("id") == config_id or filename == config_id:
-                        os.remove(filepath)
-                        return {"status": "success", "message": "Config deleted"}
+                config = await async_read_json(filepath)
+                if config and (config.get("id") == config_id or filename == config_id) and config.get("tenant_id") == user_tenant_id:
+                    await async_remove_file(filepath)
+                    return {"status": "success", "message": "Config deleted"}
         
         raise HTTPException(status_code=404, detail="Config not found")
     except Exception as e:
@@ -938,6 +1152,244 @@ async def websocket_endpoint(websocket: WebSocket):
             await manager.send_personal_message(f"Message received: {data}", websocket)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# Helper function to check admin access
+def is_admin_or_super(user: dict) -> bool:
+    """Check if user is admin or super_admin"""
+    return user.get('role') in ['admin', 'super_admin']
+
+def is_super_admin(user: dict) -> bool:
+    """Check if user is super_admin"""
+    return user.get('role') == 'super_admin'
+
+# Admin Panel API Endpoints
+@app.get("/admin")
+async def admin_panel(request: Request):
+    """Serve the admin panel (requires admin or super_admin role, async)"""
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if not is_admin_or_super(payload):
+            return HTMLResponse(content="<h1>403 Forbidden</h1><p>Admin access required</p>", status_code=403)
+        content = await async_read_text("static/admin.html")
+        return HTMLResponse(content=content)
+    except:
+        return RedirectResponse(url="/login", status_code=303)
+
+@app.get("/api/admin/tenants")
+async def get_tenants(user: dict = Depends(verify_token)):
+    """Get all tenants (super_admin only, async)"""
+    if not is_super_admin(user):
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    
+    tenants = await load_tenants()
+    return {"tenants": tenants}
+
+@app.post("/api/admin/tenants")
+async def create_tenant(tenant_data: Dict[str, Any], user: dict = Depends(verify_token)):
+    """Create new tenant (super_admin only, async)"""
+    if not is_super_admin(user):
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    
+    tenants = await load_tenants()
+    
+    # Generate unique ID
+    tenant_id = f"tenant_{str(uuid.uuid4())[:8]}"
+    
+    new_tenant = {
+        "id": tenant_id,
+        "name": tenant_data.get("name"),
+        "created_at": datetime.now().isoformat(),
+        "status": tenant_data.get("status", "active"),
+        "contact_email": tenant_data.get("contact_email", ""),
+        "max_users": tenant_data.get("max_users", 50)
+    }
+    
+    tenants.append(new_tenant)
+    await save_tenants(tenants)
+    
+    return {"status": "success", "tenant": new_tenant}
+
+@app.put("/api/admin/tenants/{tenant_id}")
+async def update_tenant(tenant_id: str, tenant_data: Dict[str, Any], user: dict = Depends(verify_token)):
+    """Update tenant (super_admin only, async)"""
+    if not is_super_admin(user):
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    
+    tenants = await load_tenants()
+    tenant_found = False
+    
+    for i, tenant in enumerate(tenants):
+        if tenant['id'] == tenant_id:
+            tenants[i].update({
+                "name": tenant_data.get("name", tenant['name']),
+                "status": tenant_data.get("status", tenant['status']),
+                "contact_email": tenant_data.get("contact_email", tenant.get('contact_email', '')),
+                "max_users": tenant_data.get("max_users", tenant.get('max_users', 50))
+            })
+            tenant_found = True
+            break
+    
+    if not tenant_found:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    await save_tenants(tenants)
+    return {"status": "success", "message": "Tenant updated"}
+
+@app.delete("/api/admin/tenants/{tenant_id}")
+async def delete_tenant(tenant_id: str, user: dict = Depends(verify_token)):
+    """Delete tenant (super_admin only, async)"""
+    if not is_super_admin(user):
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    
+    tenants = await load_tenants()
+    tenants = [t for t in tenants if t['id'] != tenant_id]
+    await save_tenants(tenants)
+    
+    return {"status": "success", "message": "Tenant deleted"}
+
+@app.get("/api/admin/users")
+async def get_users(user: dict = Depends(verify_token)):
+    """Get users - super_admin sees all, admin sees only their tenant (async)"""
+    if not is_admin_or_super(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    users = await load_users()
+    
+    # Super admin sees all users, admin sees only their tenant
+    if is_super_admin(user):
+        tenant_users = users
+    else:
+        tenant_users = [u for u in users if u.get('tenant_id') == user.get('tenant_id')]
+    
+    # Remove passwords from response
+    for u in tenant_users:
+        u.pop('password', None)
+    
+    return {"users": tenant_users}
+
+@app.post("/api/admin/users")
+async def create_user(user_data: Dict[str, Any], user: dict = Depends(verify_token)):
+    """Create new user - admin/super_admin can create users (async)"""
+    if not is_admin_or_super(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    users = await load_users()
+    
+    # Check if username already exists
+    if any(u['username'] == user_data.get('username') for u in users):
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Determine tenant_id
+    # Super admin can assign to any tenant, admin can only assign to their own tenant
+    if is_super_admin(user):
+        tenant_id = user_data.get("tenant_id")
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="Tenant ID is required")
+    else:
+        # Regular admin can only create users in their own tenant
+        tenant_id = user.get('tenant_id')
+    
+    # Validate role assignment
+    new_role = user_data.get("role", "user")
+    if new_role == "super_admin" and not is_super_admin(user):
+        raise HTTPException(status_code=403, detail="Only super admins can create super admin users")
+    
+    new_user = {
+        "username": user_data.get("username"),
+        "password": user_data.get("password"),
+        "name": user_data.get("name"),
+        "email": user_data.get("email", ""),
+        "tenant_id": tenant_id,
+        "role": new_role,
+        "created_at": datetime.now().isoformat(),
+        "status": user_data.get("status", "active")
+    }
+    
+    users.append(new_user)
+    await save_users(users)
+    
+    # Remove password from response
+    new_user_response = new_user.copy()
+    new_user_response.pop('password', None)
+    
+    return {"status": "success", "user": new_user_response}
+
+@app.put("/api/admin/users/{username}")
+async def update_user(username: str, user_data: Dict[str, Any], user: dict = Depends(verify_token)):
+    """Update user - admin/super_admin can update users (async)"""
+    if not is_admin_or_super(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    users = await load_users()
+    user_found = False
+    
+    for i, u in enumerate(users):
+        # Super admin can edit any user, admin can only edit users in their tenant
+        can_edit = is_super_admin(user) or u.get('tenant_id') == user.get('tenant_id')
+        
+        if u['username'] == username and can_edit:
+            # Update fields
+            if 'name' in user_data:
+                users[i]['name'] = user_data['name']
+            if 'email' in user_data:
+                users[i]['email'] = user_data['email']
+            if 'role' in user_data:
+                # Only super admin can change role to/from super_admin
+                new_role = user_data['role']
+                if (new_role == 'super_admin' or u['role'] == 'super_admin') and not is_super_admin(user):
+                    raise HTTPException(status_code=403, detail="Only super admins can manage super admin role")
+                users[i]['role'] = new_role
+            if 'status' in user_data:
+                users[i]['status'] = user_data['status']
+            if 'password' in user_data and user_data['password']:
+                users[i]['password'] = user_data['password']
+            if 'tenant_id' in user_data and is_super_admin(user):
+                # Only super admin can change tenant
+                users[i]['tenant_id'] = user_data['tenant_id']
+            
+            user_found = True
+            break
+    
+    if not user_found:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await save_users(users)
+    return {"status": "success", "message": "User updated"}
+
+@app.delete("/api/admin/users/{username}")
+async def delete_user(username: str, user: dict = Depends(verify_token)):
+    """Delete user - admin/super_admin can delete users (async)"""
+    if not is_admin_or_super(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Prevent deleting yourself
+    if username == user.get('username'):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    users = await load_users()
+    
+    # Find user to delete
+    user_to_delete = next((u for u in users if u['username'] == username), None)
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check permissions
+    if not is_super_admin(user):
+        # Regular admin can only delete users in their tenant
+        if user_to_delete.get('tenant_id') != user.get('tenant_id'):
+            raise HTTPException(status_code=403, detail="Cannot delete users from other tenants")
+        # Cannot delete super admins
+        if user_to_delete.get('role') == 'super_admin':
+            raise HTTPException(status_code=403, detail="Cannot delete super admin users")
+    
+    users = [u for u in users if u['username'] != username]
+    await save_users(users)
+    
+    return {"status": "success", "message": "User deleted"}
 
 @app.get("/api/validation-types")
 async def get_validation_types(user: dict = Depends(verify_token)):

@@ -20,6 +20,7 @@ class LoadTestApp {
         this.realtimeResults = [];  // Store results as they come in
         this.currentHttpMethod = 'POST';  // Track current test's method
         this.currentSessionId = null;  // Track current test session
+        this.availableTenants = [];  // Store user's available tenants
         
         // Chart instances
         this.charts = {
@@ -39,6 +40,7 @@ class LoadTestApp {
         this.setupBeforeUnloadWarning();
         this.setupChangeTracking();
         this.displayUserInfo();
+        this.loadUserTenants();
     }
     
     // Authentication
@@ -59,7 +61,154 @@ class LoadTestApp {
     
     displayUserInfo() {
         const name = localStorage.getItem('name') || localStorage.getItem('username') || 'User';
+        const role = localStorage.getItem('role');
+        const tenantName = localStorage.getItem('tenant_name') || 'Unknown';
+        
         document.getElementById('userName').textContent = name;
+        
+        // Display current tenant
+        document.getElementById('currentTenantName').textContent = tenantName;
+        
+        // Show admin link if user is admin or super_admin
+        if (role === 'admin' || role === 'super_admin') {
+            const logoutBtn = document.getElementById('logoutBtn');
+            const adminLink = document.createElement('a');
+            adminLink.href = '/admin';
+            adminLink.className = 'btn btn-sm btn-outline-primary';
+            adminLink.innerHTML = '<i class="fas fa-cog"></i> Admin Panel';
+            logoutBtn.parentNode.insertBefore(adminLink, logoutBtn);
+        }
+    }
+    
+    async loadUserTenants() {
+        try {
+            // Fetch available tenants for current user
+            const response = await fetch('/api/user/tenants', {
+                headers: this.getAuthHeaders()
+            });
+            
+            if (!response.ok) {
+                console.error('Failed to load user tenants');
+                return;
+            }
+            
+            const data = await response.json();
+            this.availableTenants = data.tenants || [];
+            
+            // Only show tenant switcher if user has multiple tenants
+            if (this.availableTenants.length > 1) {
+                document.getElementById('tenantSwitcher').style.display = 'block';
+                this.populateTenantDropdown();
+            } else if (this.availableTenants.length === 1) {
+                // Single tenant - just show the name (no dropdown needed)
+                document.getElementById('tenantSwitcher').style.display = 'block';
+                // Hide the dropdown arrow if only one tenant
+                const tenantDropdown = document.getElementById('tenantDropdown');
+                tenantDropdown.classList.remove('dropdown-toggle');
+                tenantDropdown.style.cursor = 'default';
+                tenantDropdown.removeAttribute('data-bs-toggle');
+            }
+        } catch (error) {
+            console.error('Error loading tenants:', error);
+        }
+    }
+    
+    populateTenantDropdown() {
+        const dropdownMenu = document.getElementById('tenantDropdownMenu');
+        
+        if (this.availableTenants.length === 0) {
+            dropdownMenu.innerHTML = '<li><span class="dropdown-item-text text-muted small">No tenants available</span></li>';
+            return;
+        }
+        
+        // Build dropdown items
+        const items = this.availableTenants.map(tenant => {
+            const isCurrent = tenant.is_current;
+            const checkmark = isCurrent ? '<i class="fas fa-check text-success me-2"></i>' : '<span class="me-4"></span>';
+            const activeClass = isCurrent ? 'active' : '';
+            
+            return `
+                <li>
+                    <a class="dropdown-item ${activeClass}" href="#" 
+                       onclick="app.switchTenant('${tenant.tenant_id}', '${this.escapeHtml(tenant.tenant_name)}'); return false;">
+                        ${checkmark}
+                        ${this.escapeHtml(tenant.tenant_name)}
+                        <small class="text-muted">(${tenant.role})</small>
+                    </a>
+                </li>
+            `;
+        }).join('');
+        
+        dropdownMenu.innerHTML = items;
+    }
+    
+    async switchTenant(tenantId, tenantName) {
+        // Don't switch if it's the current tenant
+        const currentTenantId = localStorage.getItem('tenant_id');
+        if (tenantId === currentTenantId) {
+            this.showToast('You are already in this tenant', 'info');
+            return;
+        }
+        
+        if (!confirm(`Switch to tenant: ${tenantName}?`)) {
+            return;
+        }
+        
+        try {
+            // Show loading state
+            this.showToast('Switching tenant...', 'info');
+            
+            // Call the switch tenant API
+            const response = await fetch('/api/user/switch-tenant', {
+                method: 'POST',
+                headers: {
+                    ...this.getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ tenant_id: tenantId })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to switch tenant');
+            }
+            
+            const data = await response.json();
+            
+            // Update stored credentials with new token
+            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('username', data.username);
+            localStorage.setItem('name', data.name);
+            localStorage.setItem('role', data.role || 'user');
+            localStorage.setItem('tenant_id', data.tenant_id || '');
+            localStorage.setItem('tenant_name', data.tenant_name || 'Unknown');
+            
+            // Update cookie
+            document.cookie = `access_token=${data.access_token}; path=/; max-age=${data.expires_in}; SameSite=Strict`;
+            
+            // Show success message
+            this.showToast(`Switched to ${tenantName} successfully!`, 'success');
+            
+            // Reload the page to refresh all data for the new tenant
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error switching tenant:', error);
+            this.showToast(`Failed to switch tenant: ${error.message}`, 'danger');
+        }
+    }
+    
+    escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text ? String(text).replace(/[&<>"']/g, m => map[m]) : '';
     }
     
     async logout() {
@@ -77,6 +226,9 @@ class LoadTestApp {
             localStorage.removeItem('access_token');
             localStorage.removeItem('username');
             localStorage.removeItem('name');
+            localStorage.removeItem('role');
+            localStorage.removeItem('tenant_id');
+            localStorage.removeItem('tenant_name');
             
             // Clear cookie
             document.cookie = 'access_token=; path=/; max-age=0';

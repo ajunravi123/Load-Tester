@@ -1,0 +1,20 @@
+{
+  "tenants": [
+    {
+      "id": "tenant_001",
+      "name": "Default Organization",
+      "created_at": "2025-01-01T00:00:00",
+      "status": "active",
+      "contact_email": "admin@example.com",
+      "max_users": 50
+    },
+    {
+      "id": "tenant_cc501167",
+      "name": "Pricersmart",
+      "created_at": "2025-10-04T12:30:27.226928",
+      "status": "active",
+      "contact_email": "ajunravi123@gmail.com",
+      "max_users": 50
+    }
+  ]
+}

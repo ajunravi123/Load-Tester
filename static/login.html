@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - ImpactX</title>
+    <title>Login - LoadLion</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -15,7 +15,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 50%, #d35400 100%);
             position: relative;
             overflow: hidden;
         }
@@ -68,7 +68,7 @@
         }
         
         .login-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
             color: white;
             padding: 50px 40px 40px;
             text-align: center;
@@ -92,8 +92,9 @@
             z-index: 1;
         }
         
-        .login-header i {
-            font-size: 4rem;
+        .login-header .lion-icon {
+            width: 80px;
+            height: 80px;
             margin-bottom: 20px;
             display: inline-block;
             animation: pulse 2s ease-in-out infinite;
@@ -135,8 +136,8 @@
         }
         
         .form-floating input:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            border-color: #e67e22;
+            box-shadow: 0 0 0 0.2rem rgba(230, 126, 34, 0.25);
         }
         
         .form-floating label {
@@ -149,17 +150,17 @@
             font-size: 1.1rem;
             font-weight: 600;
             border-radius: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
             border: none;
             color: white;
             transition: all 0.3s ease;
             margin-top: 10px;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 15px rgba(230, 126, 34, 0.4);
         }
         
         .btn-login:hover {
             transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.6);
         }
         
         .btn-login:active {
@@ -248,9 +249,9 @@
         <div class="login-card">
             <div class="login-header">
                 <div class="logo-container">
-                    <i class="fas fa-bolt"></i>
-                    <h1>ImpactX</h1>
-                    <p class="mb-0">Load Testing Tool</p>
+                    <img src="/static/images/lion.png" alt="LoadLion" class="lion-icon" />
+                    <h1>LoadLion</h1>
+                    <p class="mb-0">Hunt down performance bottlenecks</p>
                     <p class="mb-0 mt-1" style="font-size: 0.9rem; opacity: 0.9;">Sign in to continue</p>
                 </div>
             </div>
@@ -271,6 +272,16 @@
                         <label for="password"><i class="fas fa-lock me-2"></i>Password</label>
                     </div>
                     
+                    <div id="tenantSelectGroup" style="display: none; margin-bottom: 20px;">
+                        <label for="tenantSelect" style="display: block; margin-bottom: 8px; color: #6c757d; font-size: 0.9rem;">
+                            <i class="fas fa-building me-2"></i>Select Tenant
+                        </label>
+                        <select class="form-select" id="tenantSelect" style="border-radius: 10px; border: 2px solid #e9ecef;">
+                            <option value="">Choose a tenant...</option>
+                        </select>
+                        <small class="text-muted" style="display: block; margin-top: 5px;">You have access to multiple tenants</small>
+                    </div>
+                    
                     <button type="submit" class="btn btn-login" id="loginBtn">
                         <i class="fas fa-sign-in-alt me-2"></i>Sign In
                     </button>
@@ -279,7 +290,7 @@
         </div>
         
         <div class="footer-credit">
-            Made with <i class="fas fa-heart"></i> by <strong>Ajun Ravi</strong>
+            From the desk of <strong><a href="https://www.linkedin.com/in/ajun-ravi-520760166/" target="_blank">Ajun Ravi</a></strong>
         </div>
     </div>
 
@@ -289,12 +300,19 @@
         const errorAlert = document.getElementById('error-alert');
         const errorMessage = document.getElementById('error-message');
         const loginBtn = document.getElementById('loginBtn');
+        const tenantSelectGroup = document.getElementById('tenantSelectGroup');
+        const tenantSelect = document.getElementById('tenantSelect');
+        
+        let availableTenants = [];
+        let currentUsername = '';
+        let currentPassword = '';
         
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+            const selectedTenant = tenantSelect.value;
             
             // Hide previous errors
             errorAlert.style.display = 'none';
@@ -304,12 +322,17 @@
             loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Signing in...';
             
             try {
+                const requestBody = { username, password };
+                if (selectedTenant) {
+                    requestBody.tenant_id = selectedTenant;
+                }
+                
                 const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 if (!response.ok) {
@@ -319,6 +342,48 @@
                 
                 const data = await response.json();
                 
+                // Check if multiple tenants found
+                if (data.multiple_tenants) {
+                    availableTenants = data.tenants;
+                    currentUsername = username;
+                    currentPassword = password;
+                    
+                    // Show tenant selector
+                    tenantSelectGroup.style.display = 'block';
+                    
+                    // Populate tenant dropdown
+                    tenantSelect.innerHTML = '<option value="">Choose a tenant...</option>' +
+                        data.tenants.map(t => 
+                            `<option value="${t.tenant_id}">${t.tenant_name} (${t.role})</option>`
+                        ).join('');
+                    
+                    // Auto-select tenant if user was switching
+                    const switchToTenant = localStorage.getItem('switch_to_tenant');
+                    if (switchToTenant) {
+                        tenantSelect.value = switchToTenant;
+                        localStorage.removeItem('switch_to_tenant');
+                        // Auto-submit if valid selection
+                        if (tenantSelect.value) {
+                            setTimeout(() => {
+                                loginForm.dispatchEvent(new Event('submit'));
+                            }, 500);
+                            return;
+                        }
+                    }
+                    
+                    // Re-enable button
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Sign In';
+                    
+                    // Show info message
+                    errorMessage.textContent = 'Please select a tenant to continue';
+                    errorAlert.className = 'alert alert-info';
+                    errorAlert.style.display = 'block';
+                    
+                    return;
+                }
+                
+                // Single tenant login successful
                 // Store token in cookie
                 document.cookie = `access_token=${data.access_token}; path=/; max-age=${data.expires_in}; SameSite=Strict`;
                 
@@ -326,12 +391,16 @@
                 localStorage.setItem('access_token', data.access_token);
                 localStorage.setItem('username', data.username);
                 localStorage.setItem('name', data.name);
+                localStorage.setItem('role', data.role || 'user');
+                localStorage.setItem('tenant_id', data.tenant_id || '');
+                localStorage.setItem('tenant_name', data.tenant_name || 'Unknown');
                 
                 // Redirect to main page
                 window.location.href = '/';
                 
             } catch (error) {
                 errorMessage.textContent = error.message;
+                errorAlert.className = 'alert alert-danger';
                 errorAlert.style.display = 'block';
                 
                 // Re-enable button
