@@ -1540,10 +1540,27 @@ async def create_user(user_data: Dict[str, Any], user: dict = Depends(verify_tok
                 t_ids = [admin_account.get('tenant_id')]
             admin_tenant_ids.extend(t_ids)
         
-        # Use admin's available tenants
-        tenant_ids = admin_tenant_ids if admin_tenant_ids else []
-        if not tenant_ids:
+        if not admin_tenant_ids:
             raise HTTPException(status_code=400, detail="Admin has no tenants assigned")
+        
+        # Get requested tenant_ids from user_data
+        requested_tenant_ids = user_data.get("tenant_ids", [])
+        if not requested_tenant_ids and user_data.get("tenant_id"):
+            requested_tenant_ids = [user_data.get("tenant_id")]
+        
+        if not requested_tenant_ids:
+            raise HTTPException(status_code=400, detail="At least one tenant is required")
+        
+        # Validate that all requested tenants are in admin's accessible tenants
+        invalid_tenants = [tid for tid in requested_tenant_ids if tid not in admin_tenant_ids]
+        if invalid_tenants:
+            raise HTTPException(
+                status_code=403, 
+                detail=f"You don't have access to assign these tenants: {invalid_tenants}. Your accessible tenants: {admin_tenant_ids}"
+            )
+        
+        # Use the requested tenant_ids (which are now validated)
+        tenant_ids = requested_tenant_ids
     
     # Validate role assignment
     new_role = user_data.get("role", "user")
@@ -1616,12 +1633,36 @@ async def update_user(username: str, user_data: Dict[str, Any], user: dict = Dep
                 users[i]['status'] = user_data['status']
             if 'password' in user_data and user_data['password']:
                 users[i]['password'] = user_data['password']
-            if 'tenant_ids' in user_data and is_super_admin(user):
-                # Only super admin can change tenants
-                users[i]['tenant_ids'] = user_data['tenant_ids']
-            elif 'tenant_id' in user_data and is_super_admin(user):
+            if 'tenant_ids' in user_data:
+                # Both super admin and regular admin can change tenants
+                new_tenant_ids = user_data['tenant_ids']
+                
+                if is_super_admin(user):
+                    # Super admin can assign any tenants
+                    users[i]['tenant_ids'] = new_tenant_ids
+                else:
+                    # Regular admin can only assign tenants they have access to
+                    invalid_tenants = [tid for tid in new_tenant_ids if tid not in admin_tenant_ids]
+                    if invalid_tenants:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"You don't have access to assign these tenants: {invalid_tenants}. Your accessible tenants: {admin_tenant_ids}"
+                        )
+                    users[i]['tenant_ids'] = new_tenant_ids
+            elif 'tenant_id' in user_data:
                 # Support old single tenant_id for backward compatibility
-                users[i]['tenant_ids'] = [user_data['tenant_id']]
+                new_tenant_id = user_data['tenant_id']
+                
+                if is_super_admin(user):
+                    users[i]['tenant_ids'] = [new_tenant_id]
+                else:
+                    # Regular admin can only assign tenants they have access to
+                    if new_tenant_id not in admin_tenant_ids:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"You don't have access to assign tenant: {new_tenant_id}. Your accessible tenants: {admin_tenant_ids}"
+                        )
+                    users[i]['tenant_ids'] = [new_tenant_id]
             
             user_found = True
             break

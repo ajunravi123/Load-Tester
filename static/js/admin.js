@@ -128,6 +128,36 @@ class AdminApp {
         }
     }
     
+    async loadAdminTenants() {
+        try {
+            if (this.isSuperAdmin) {
+                // Super admin gets all tenants
+                const response = await fetch('/api/admin/tenants', { headers: this.getAuthHeaders() });
+                if (response.ok) {
+                    const data = await response.json();
+                    this.tenants = data.tenants || [];
+                }
+            } else {
+                // Regular admin gets their accessible tenants
+                const response = await fetch('/api/user/tenants', { headers: this.getAuthHeaders() });
+                if (response.ok) {
+                    const data = await response.json();
+                    const accessibleTenants = data.tenants || [];
+                    
+                    // Convert to tenant format for consistency
+                    this.tenants = accessibleTenants.map(t => ({
+                        id: t.tenant_id,
+                        name: t.tenant_name,
+                        status: 'active'
+                    }));
+                }
+            }
+        } catch (error) {
+            console.error('Error loading admin tenants:', error);
+            this.tenants = [];
+        }
+    }
+    
     getTenantName(tenantId) {
         const tenant = this.tenants.find(t => t.id === tenantId);
         return tenant ? tenant.name : tenantId || 'N/A';
@@ -271,21 +301,18 @@ class AdminApp {
         const tenantSelectGroup = document.getElementById('tenantSelectGroup');
         const superAdminOption = document.getElementById('superAdminOption');
         
+        // Both super admin and regular admin can see tenant selector
+        // Show tenant selector
+        tenantSelectGroup.style.display = 'block';
+        
+        // Fetch available tenants for the admin
+        await this.loadAdminTenants();
+        this.populateTenantSelector();
+        
+        // Show super admin role option only for super admin
         if (this.isSuperAdmin) {
-            // Show tenant selector
-            tenantSelectGroup.style.display = 'block';
-            
-            // Fetch latest tenants dynamically
-            await this.loadTenantsList();
-            this.populateTenantSelector();
-            
-            // Show super admin role option
             superAdminOption.style.display = 'block';
         } else {
-            // Hide tenant selector
-            tenantSelectGroup.style.display = 'none';
-            
-            // Hide super admin option
             superAdminOption.style.display = 'none';
         }
         
@@ -336,24 +363,22 @@ class AdminApp {
             document.getElementById('userRole').value = user.role || 'user';
             document.getElementById('userStatus').value = user.status || 'active';
             
-            // Set tenants if super admin
-            if (this.isSuperAdmin) {
-                // Support both single tenant_id and multiple tenant_ids
-                const userTenants = user.tenant_ids || (user.tenant_id ? [user.tenant_id] : []);
-                
-                // Uncheck all checkboxes first
-                document.querySelectorAll('input[name="userTenants"]').forEach(cb => {
-                    cb.checked = false;
-                });
-                
-                // Check the user's tenants
-                userTenants.forEach(tenantId => {
-                    const checkbox = document.getElementById(`tenant_${tenantId}`);
-                    if (checkbox) {
-                        checkbox.checked = true;
-                    }
-                });
-            }
+            // Set tenants for both super admin and regular admin
+            // Support both single tenant_id and multiple tenant_ids
+            const userTenants = user.tenant_ids || (user.tenant_id ? [user.tenant_id] : []);
+            
+            // Uncheck all checkboxes first
+            document.querySelectorAll('input[name="userTenants"]').forEach(cb => {
+                cb.checked = false;
+            });
+            
+            // Check the user's tenants
+            userTenants.forEach(tenantId => {
+                const checkbox = document.getElementById(`tenant_${tenantId}`);
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            });
         } catch (error) {
             console.error('Error loading user:', error);
             this.showToast('Failed to load user data', 'danger');
@@ -388,17 +413,15 @@ class AdminApp {
             return;
         }
         
-        // Validate tenant selection for super admin
+        // Validate tenant selection for both super admin and regular admin
         let tenantIds = [];
-        if (this.isSuperAdmin) {
-            // Get selected tenants from checkboxes
-            const selectedCheckboxes = document.querySelectorAll('input[name="userTenants"]:checked');
-            tenantIds = Array.from(selectedCheckboxes).map(cb => cb.value);
-            
-            if (tenantIds.length === 0) {
-                this.showToast('Please select at least one tenant', 'warning');
-                return;
-            }
+        // Get selected tenants from checkboxes
+        const selectedCheckboxes = document.querySelectorAll('input[name="userTenants"]:checked');
+        tenantIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+        
+        if (tenantIds.length === 0) {
+            this.showToast('Please select at least one tenant', 'warning');
+            return;
         }
         
         try {
@@ -409,8 +432,8 @@ class AdminApp {
                 status
             };
             
-            // Add tenant_ids for super admin (multiple tenants)
-            if (this.isSuperAdmin && tenantIds.length > 0) {
+            // Add tenant_ids for both super admin and regular admin
+            if (tenantIds.length > 0) {
                 userData.tenant_ids = tenantIds;
             }
             
