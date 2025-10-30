@@ -4,6 +4,7 @@ import time
 import json
 import logging
 import os
+import random
 from typing import Optional, List, Dict, Any, Union
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -103,6 +104,7 @@ class LoadTestConfig(BaseModel):
     headers: Dict[str, str] = Field(default={}, description="Custom HTTP headers")
     body_type: str = Field(default="json", description="Request body type (json, form, raw)")
     request_body: Dict[str, Any] = Field(default={}, description="Request body as key-value pairs")
+    body_fields_config: List[Dict[str, Any]] = Field(default=[], description="Body fields configuration with random value support")
     raw_body: Optional[str] = Field(default=None, description="Raw request body (for raw body type)")
     concurrent_calls: int = Field(default=1, ge=1, le=1000, description="Number of simultaneous requests")
     sequential_batches: Optional[int] = Field(default=None, ge=1, le=100, description="Number of sequential batches")
@@ -205,6 +207,40 @@ class EnhancedLoadTester:
                 headers['Content-Type'] = 'application/x-www-form-urlencoded'
         
         return headers
+    
+    def _generate_random_body(self) -> Dict[str, Any]:
+        """Generate request body with random values where specified"""
+        if not self.config.body_fields_config:
+            # If no body_fields_config, use the regular request_body
+            return self.config.request_body.copy() if self.config.request_body else {}
+        
+        body = {}
+        for field in self.config.body_fields_config:
+            key = field.get('key')
+            value = field.get('value')
+            is_random = field.get('isRandom', False)
+            
+            if not key:
+                continue
+            
+            if is_random and value:
+                # Try to parse value as JSON array
+                try:
+                    values_array = json.loads(value) if isinstance(value, str) else value
+                    if isinstance(values_array, list) and len(values_array) > 0:
+                        # Randomly select one value from the array
+                        body[key] = random.choice(values_array)
+                    else:
+                        # If not a valid array, use the value as-is
+                        body[key] = value
+                except (json.JSONDecodeError, TypeError):
+                    # If JSON parsing fails, use the value as-is
+                    body[key] = value
+            else:
+                # Not random, use the value directly
+                body[key] = value
+        
+        return body
     
     def _validate_response(self, response_data: str, status_code: int) -> List[Dict[str, Any]]:
         """Enhanced validation with multiple rule types"""
@@ -320,7 +356,8 @@ class EnhancedLoadTester:
         timestamp = datetime.now()
         
         request_headers = self._get_headers()
-        request_data = self.config.request_body
+        # Generate request body with random values if configured
+        request_data = self._generate_random_body()
         
         # Prepare request body based on body type
         request_kwargs = {
@@ -331,10 +368,10 @@ class EnhancedLoadTester:
         
         if self.config.http_method in ['POST', 'PUT', 'PATCH']:
             if self.config.body_type == 'json':
-                request_kwargs['json'] = self.config.request_body
+                request_kwargs['json'] = request_data
             elif self.config.body_type == 'form':
                 form_data = aiohttp.FormData()
-                for key, value in self.config.request_body.items():
+                for key, value in request_data.items():
                     form_data.add_field(str(key), str(value))
                 request_kwargs['data'] = form_data
             elif self.config.body_type == 'raw' and self.config.raw_body:

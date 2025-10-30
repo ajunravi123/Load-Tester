@@ -616,9 +616,9 @@ class LoadTestApp {
     }
     
     // Body Fields Management
-    addBodyField(key = '', value = '') {
+    addBodyField(key = '', value = '', isRandom = false) {
         const index = this.bodyFields.length;
-        this.bodyFields.push({ key, value });
+        this.bodyFields.push({ key, value, isRandom: isRandom || false });
         this.markAsChanged();
         
         const list = document.getElementById('bodyFieldsList');
@@ -637,10 +637,36 @@ class LoadTestApp {
         const valueInput = document.createElement('input');
         valueInput.type = 'text';
         valueInput.className = 'form-control form-control-sm';
-        valueInput.placeholder = 'Field value';
+        valueInput.placeholder = isRandom ? 'JSON array: ["val1", "val2", "val3"]' : 'Field value';
         valueInput.value = value; // This properly escapes the value
         valueInput.dataset.index = index;
         valueInput.dataset.field = 'value';
+        
+        // Create random toggle checkbox
+        const randomToggle = document.createElement('div');
+        randomToggle.className = 'form-check form-switch ms-2';
+        randomToggle.style.minWidth = '150px';
+        randomToggle.innerHTML = `
+            <input class="form-check-input" type="checkbox" id="random_${index}" 
+                   ${isRandom ? 'checked' : ''}>
+            <label class="form-check-label small" for="random_${index}" 
+                   title="When enabled, provide a JSON array of values. A random value will be selected for each request.">
+                <i class="fas fa-random"></i> Random
+            </label>
+        `;
+        
+        const randomCheckbox = randomToggle.querySelector('input');
+        randomCheckbox.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            this.bodyFields[index].isRandom = checked;
+            valueInput.placeholder = checked ? 'JSON array: ["val1", "val2", "val3"]' : 'Field value';
+            
+            // Add helpful hint badge
+            if (checked && !valueInput.value.trim().startsWith('[')) {
+                this.showToast('💡 Tip: Enter values as a JSON array, e.g., ["value1", "value2", "value3"]', 'info');
+            }
+            this.markAsChanged();
+        });
         
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn btn-sm btn-outline-danger';
@@ -657,6 +683,7 @@ class LoadTestApp {
         
         item.appendChild(keyInput);
         item.appendChild(valueInput);
+        item.appendChild(randomToggle);
         item.appendChild(deleteBtn);
         list.appendChild(item);
         this.updateEmptyStates();
@@ -672,7 +699,7 @@ class LoadTestApp {
         document.getElementById('bodyFieldsList').innerHTML = '';
         const temp = [...this.bodyFields];
         this.bodyFields = [];
-        temp.forEach(f => this.addBodyField(f.key, f.value));
+        temp.forEach(f => this.addBodyField(f.key, f.value, f.isRandom));
     }
     
     // Paste JSON
@@ -979,11 +1006,22 @@ class LoadTestApp {
         
         let requestBody = {};
         let rawBody = null;
+        let bodyFieldsConfig = [];
         
         if (this.bodyType === 'raw') {
             rawBody = document.getElementById('rawBodyInput').value;
         } else if (this.bodyType !== 'none') {
-            this.bodyFields.forEach(f => { if (f.key && f.value) requestBody[f.key] = f.value; });
+            // Build both request_body (for backward compatibility) and body_fields_config (for random values)
+            this.bodyFields.forEach(f => {
+                if (f.key && f.value) {
+                    requestBody[f.key] = f.value;
+                    bodyFieldsConfig.push({
+                        key: f.key,
+                        value: f.value,
+                        isRandom: f.isRandom || false
+                    });
+                }
+            });
         }
         
         // Store the HTTP method for display in realtime results
@@ -995,6 +1033,7 @@ class LoadTestApp {
             headers,
             body_type: this.bodyType,
             request_body: requestBody,
+            body_fields_config: bodyFieldsConfig,
             raw_body: rawBody,
             concurrent_calls: parseInt(document.getElementById('concurrentCalls').value),
             sequential_batches: document.getElementById('sequentialBatches').value ? parseInt(document.getElementById('sequentialBatches').value) : null,
@@ -1084,6 +1123,43 @@ class LoadTestApp {
         });
         const session = await response.json();
         this.displayResults(session);
+    }
+    
+    displayStatsFromWebSocket(stats) {
+        // Hide progress and show stats
+        this.hideProgress();
+        document.getElementById('statsGrid').style.display = 'flex';
+        
+        // Update stat cards
+        document.getElementById('statSuccessRate').textContent = `${stats.success_rate.toFixed(1)}%`;
+        document.getElementById('statAvgTime').textContent = `${Math.round(stats.avg_response_time * 1000)}ms`;
+        document.getElementById('statRPS').textContent = stats.requests_per_second.toFixed(1);
+        document.getElementById('statFailed').textContent = stats.failed_requests;
+        
+        // Render charts using the real-time results we've already collected
+        if (this.realtimeResults.length > 0) {
+            this.renderChartsFromRealtimeResults();
+        }
+        
+        // Ensure charts section is visible
+        document.getElementById('chartsSection').style.display = 'block';
+    }
+    
+    renderChartsFromRealtimeResults() {
+        // Create a mock session object from realtime results for chart rendering
+        const mockSession = {
+            results: this.realtimeResults.map((data, index) => ({
+                status: data.status,
+                response_time: data.response_time,
+                status_code: data.status_code,
+                validation_passed: data.validation_passed
+            })),
+            config: {
+                http_method: this.currentHttpMethod
+            }
+        };
+        
+        this.renderCharts(mockSession);
     }
     
     startClock() {
@@ -1648,8 +1724,13 @@ class LoadTestApp {
             this.setTestRunning(false);
             this.stopClock();
             
-            // Load and display results
-            this.loadResults(data.session_id);
+            // Display stats directly from WebSocket message (more efficient and avoids race condition)
+            if (data.stats) {
+                this.displayStatsFromWebSocket(data.stats);
+            } else {
+                // Fallback: Load from API if stats not in message
+                this.loadResults(data.session_id);
+            }
             this.playCompletionSound();
             this.showToast('Test completed successfully', 'success');
         } else if (data.type === 'test_cancelled') {
@@ -1657,9 +1738,15 @@ class LoadTestApp {
             this.setTestRunning(false);
             this.stopClock();
             
-            // Load and display partial results
-            this.loadResults(data.session_id);
-            this.showToast(`Test cancelled. ${data.completed_requests || 0} requests completed.`, 'warning');
+            // Display stats directly from WebSocket message
+            if (data.stats) {
+                this.displayStatsFromWebSocket(data.stats);
+                this.showToast(`Test cancelled. ${data.completed_requests || 0} requests completed.`, 'warning');
+            } else {
+                // Fallback: Load from API
+                this.loadResults(data.session_id);
+                this.showToast(`Test cancelled. ${data.completed_requests || 0} requests completed.`, 'warning');
+            }
         } else if (data.type === 'test_failed') {
             // Stop the button spinner on failure
             this.setTestRunning(false);

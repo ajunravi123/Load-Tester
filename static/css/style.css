@@ -152,8 +152,18 @@ body {
     border-radius: 0.25rem;
 }
 
-.key-value-item input {
+.key-value-item input[type="text"] {
     flex: 1;
+}
+
+.key-value-item .form-check {
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.key-value-item .form-check-label {
+    white-space: nowrap;
+    user-select: none;
 }
 
 .key-value-item .btn {
