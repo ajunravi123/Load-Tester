@@ -139,35 +139,73 @@ class TestSession(BaseModel):
     stats: Optional[Dict[str, Any]] = None
 
 class ConnectionManager:
-    """WebSocket connection manager for real-time updates"""
+    """WebSocket connection manager for real-time updates with session isolation"""
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: Dict[str, WebSocket] = {}  # connection_id -> websocket
+        self.session_connections: Dict[str, str] = {}  # session_id -> connection_id
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, connection_id: str):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_connections[connection_id] = websocket
+        print(f"WebSocket connected: {connection_id}")
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def disconnect(self, connection_id: str):
+        if connection_id in self.active_connections:
+            del self.active_connections[connection_id]
+        # Clean up session associations
+        sessions_to_remove = [sid for sid, cid in self.session_connections.items() if cid == connection_id]
+        for sid in sessions_to_remove:
+            del self.session_connections[sid]
+        print(f"WebSocket disconnected: {connection_id}")
 
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+    def associate_session(self, session_id: str, connection_id: str):
+        """Associate a test session with a specific WebSocket connection"""
+        self.session_connections[session_id] = connection_id
+        print(f"Session {session_id} associated with connection {connection_id}")
+
+    async def send_personal_message(self, message: str, connection_id: str):
+        """Send message to a specific connection"""
+        if connection_id in self.active_connections:
+            websocket = self.active_connections[connection_id]
+            await websocket.send_text(message)
+
+    async def send_to_session(self, message: str, session_id: str):
+        """Send message only to the connection that owns this session"""
+        try:
+            msg_data = json.loads(message)
+            msg_type = msg_data.get('type', 'unknown')
+            
+            # Find the connection associated with this session
+            connection_id = self.session_connections.get(session_id)
+            
+            if connection_id and connection_id in self.active_connections:
+                websocket = self.active_connections[connection_id]
+                print(f"Sending {msg_type} for session {session_id} to connection {connection_id}")
+                await websocket.send_text(message)
+            else:
+                print(f"No active connection found for session {session_id}")
+        except Exception as e:
+            print(f"Error sending to session {session_id}: {e}")
 
     async def broadcast(self, message: str):
-        # Log broadcast for debugging
+        """Broadcast to all connections (use sparingly, prefer send_to_session)"""
         try:
             msg_data = json.loads(message)
             print(f"Broadcasting: {msg_data.get('type')} to {len(self.active_connections)} clients")
         except:
             pass
         
-        for connection in self.active_connections:
+        disconnected = []
+        for connection_id, websocket in self.active_connections.items():
             try:
-                await connection.send_text(message)
+                await websocket.send_text(message)
             except Exception as e:
-                print(f"Error sending to client: {e}")
-                # Remove disconnected connections
-                self.active_connections.remove(connection)
+                print(f"Error sending to client {connection_id}: {e}")
+                disconnected.append(connection_id)
+        
+        # Clean up disconnected connections
+        for connection_id in disconnected:
+            self.disconnect(connection_id)
 
 class EnhancedLoadTester:
     """Enhanced load testing utility with advanced validation"""
@@ -419,8 +457,9 @@ class EnhancedLoadTester:
                 
                 # Send real-time update via WebSocket with complete result data
                 if websocket_manager:
-                    await websocket_manager.broadcast(json.dumps({
+                    await websocket_manager.send_to_session(json.dumps({
                         "type": "request_completed",
+                        "session_id": self.session_id,
                         "request_num": request_num + 1,
                         "status": final_status,
                         "response_time": response_time,
@@ -433,7 +472,7 @@ class EnhancedLoadTester:
                         "request_headers": request_headers,
                         "response_headers": response_headers,
                         "endpoint_url": self.endpoint
-                    }, default=str))  # Handle datetime serialization
+                    }, default=str), self.session_id)  # Handle datetime serialization
                 
                 return result
                 
@@ -453,8 +492,9 @@ class EnhancedLoadTester:
             
             # Send error update via WebSocket with complete result data
             if websocket_manager:
-                await websocket_manager.broadcast(json.dumps({
+                await websocket_manager.send_to_session(json.dumps({
                     "type": "request_completed",  # Use same type for consistency
+                    "session_id": self.session_id,
                     "request_num": request_num + 1,
                     "status": "error",
                     "response_time": response_time,
@@ -467,7 +507,7 @@ class EnhancedLoadTester:
                     "request_headers": request_headers,
                     "response_headers": None,
                     "endpoint_url": self.endpoint
-                }, default=str))
+                }, default=str), self.session_id)
             
             return result
     
@@ -495,11 +535,11 @@ class EnhancedLoadTester:
             
             # Send start notification
             if websocket_manager:
-                await websocket_manager.broadcast(json.dumps({
+                await websocket_manager.send_to_session(json.dumps({
                     "type": "test_started",
                     "session_id": self.session_id,
                     "total_requests": self.config.concurrent_calls * (self.config.sequential_batches or 1)
-                }))
+                }), self.session_id)
             
             async with aiohttp.ClientSession(connector=connector) as session:
                 if self.config.sequential_batches:
@@ -510,11 +550,12 @@ class EnhancedLoadTester:
                             break
                         
                         if websocket_manager:
-                            await websocket_manager.broadcast(json.dumps({
+                            await websocket_manager.send_to_session(json.dumps({
                                 "type": "batch_started",
+                                "session_id": self.session_id,
                                 "batch_num": batch_num + 1,
                                 "total_batches": self.config.sequential_batches
-                            }))
+                            }), self.session_id)
                         
                         tasks = [
                             self._make_single_request(session, i + (batch_num * self.config.concurrent_calls), websocket_manager)
@@ -559,18 +600,18 @@ class EnhancedLoadTester:
             # Send completion/cancellation notification
             if websocket_manager:
                 if self.is_cancelled:
-                    await websocket_manager.broadcast(json.dumps({
+                    await websocket_manager.send_to_session(json.dumps({
                         "type": "test_cancelled",
                         "session_id": self.session_id,
                         "stats": stats,
                         "completed_requests": len(all_results)
-                    }))
+                    }), self.session_id)
                 else:
-                    await websocket_manager.broadcast(json.dumps({
+                    await websocket_manager.send_to_session(json.dumps({
                         "type": "test_completed",
                         "session_id": self.session_id,
                         "stats": stats
-                    }))
+                    }), self.session_id)
             
             # Save results to file
             await self._save_results(test_session)
@@ -582,11 +623,11 @@ class EnhancedLoadTester:
             test_session.end_time = datetime.now()
             
             if websocket_manager:
-                await websocket_manager.broadcast(json.dumps({
+                await websocket_manager.send_to_session(json.dumps({
                     "type": "test_failed",
                     "session_id": self.session_id,
                     "error": str(e)
-                }))
+                }), self.session_id)
             
             raise HTTPException(status_code=500, detail=f"Load test failed: {str(e)}")
     
@@ -1396,15 +1437,43 @@ async def delete_config(config_id: str, user: dict = Depends(verify_token)):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time updates"""
-    await manager.connect(websocket)
+    """WebSocket endpoint for real-time updates with connection isolation"""
+    # Generate unique connection ID for this WebSocket
+    connection_id = str(uuid.uuid4())
+    
+    await manager.connect(websocket, connection_id)
+    
     try:
+        # Send connection acknowledgment with connection ID
+        await manager.send_personal_message(json.dumps({
+            "type": "connection_established",
+            "connection_id": connection_id
+        }), connection_id)
+        
         while True:
             data = await websocket.receive_text()
-            # Echo back for connection testing
-            await manager.send_personal_message(f"Message received: {data}", websocket)
+            
+            try:
+                msg = json.loads(data)
+                
+                # Handle session association from client
+                if msg.get("type") == "associate_session":
+                    session_id = msg.get("session_id")
+                    if session_id:
+                        manager.associate_session(session_id, connection_id)
+                        await manager.send_personal_message(json.dumps({
+                            "type": "session_associated",
+                            "session_id": session_id
+                        }), connection_id)
+                else:
+                    # Echo back for other messages
+                    await manager.send_personal_message(f"Message received: {data}", connection_id)
+            except json.JSONDecodeError:
+                # Not JSON, just echo
+                await manager.send_personal_message(f"Message received: {data}", connection_id)
+                
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect(connection_id)
 
 # Helper function to check admin access
 def is_admin_or_super(user: dict) -> bool:

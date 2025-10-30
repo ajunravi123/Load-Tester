@@ -2,6 +2,7 @@
 class LoadTestApp {
     constructor() {
         this.ws = null;
+        this.wsConnectionId = null;  // Track WebSocket connection ID
         this.currentSession = null;
         this.headers = [];
         this.bodyFields = [];
@@ -473,6 +474,14 @@ class LoadTestApp {
             try {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket message received:', data.type, data);
+                
+                // Store connection ID when received
+                if (data.type === 'connection_established') {
+                    this.wsConnectionId = data.connection_id;
+                    console.log('WebSocket connection ID:', this.wsConnectionId);
+                    return;
+                }
+                
                 this.handleWebSocketMessage(data);
             } catch (e) {
                 console.error('WebSocket error:', e);
@@ -1062,6 +1071,15 @@ class LoadTestApp {
             
             // Store session ID for cancellation
             this.currentSessionId = result.session_id;
+            
+            // Associate this session with the current WebSocket connection
+            if (this.ws && this.ws.readyState === WebSocket.OPEN && this.wsConnectionId) {
+                this.ws.send(JSON.stringify({
+                    type: 'associate_session',
+                    session_id: result.session_id
+                }));
+                console.log('Associated session', result.session_id, 'with connection', this.wsConnectionId);
+            }
             
         } catch (error) {
             // Only handle errors if test hasn't completed via WebSocket
